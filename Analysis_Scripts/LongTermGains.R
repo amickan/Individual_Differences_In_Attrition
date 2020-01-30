@@ -7,6 +7,7 @@ library(plyr)
 library(lme4)
 library(lmerTest)
 library(dplyr)
+library(effects)
 
 #### read data #####
 setwd("//cnas.ru.nl/wrkgrp/STD-OnlineStudy_DataCoding")
@@ -42,6 +43,7 @@ if (length(nums) > 0){
   for (i in 1:length(nums)){
   T2sub <- T2sub[-which(T2sub$ppn == nums[i]),]}
 }
+
 rm(nums)
 nums <- which(table(T3sub$ppn) < 144)
 nums <- names(nums)
@@ -105,7 +107,7 @@ for (i in 1:length(ambitems)){
 #T2sub$imgFilename <- droplevels(T2sub$imgFilename)
 
 # delete practice trials 
-Mcombined <- Mcombined[Mcombined$imgIndex > 4,] #excluding the first 5 items, trial index starts at 0
+Mcombined <- Mcombined[Mcombined$imgIndex > 3,] #excluding the first 5 items, trial index starts at 0
 Mcombined$error <- Mcombined$error*100
 # going for the dichotomous error coding
 Mcombined$errorbin <- Mcombined$error
@@ -115,24 +117,113 @@ for (i in 1:nrow(Mcombined)){
   }
 }
 
-### decide whether to plot and do analyses with dichotomous codings or not
-Mcombined$errorfine <- Mcombined$error
-dichotomous = TRUE
-if (dichotomous == T){
-  Mcombined$error <- Mcombined$errorbin
-} else {
-  Mcombined$error <- Mcombined$errorfine
+# same analysis with fine-grained error rates
+setwd("//ru.nl/wrkgrp/STD-OnlineStudy_DataCoding")
+lenwords <- read.delim("FullListWords_SpanishNaming.txt")
+
+# adjust existing phoneme correct and incorrect counts 
+Mcombined$OrigLen <- NA
+Mcombined$img <- gsub(".png", "", Mcombined$imgFilename)
+
+for (j in 1:nrow(Mcombined)) {
+  pos <- which(tolower(as.character(lenwords$English)) == tolower(as.character(Mcombined$img[j])))
+  Mcombined$OrigLen[j] <- lenwords$TotalPhon[pos]
+  
+  if (is.na(lenwords$AltPhon[pos])==1) {}
+  else if (is.na(lenwords$AltPhon[pos])==0 && is.na(Mcombined$response[j])==0) {
+    if (grepl("man", Mcombined$response[j]) && Mcombined$imgFilename[j] == "peanut.png") {
+      # cacahuete synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "mani"
+    } else if (grepl("pil", Mcombined$response[j]) && Mcombined$imgFilename[j] == "battery.png") {
+      # batteria synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "pila"
+    } else if (grepl("are", Mcombined$response[j]) && Mcombined$imgFilename[j] == "earring.png") {
+      # pendientes synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "aretes"
+    } else if (grepl("^aro", Mcombined$response[j]) && Mcombined$imgFilename[j] != "ring.png") {
+      # anillo synonym
+      Mcombined$OrigLen[j] <- lenwords$X[pos]
+      Mcombined$imgFilename[j] <- "aro"
+    } else if (grepl("co", Mcombined$response[j]) && Mcombined$imgFilename[j] == "pillow.png") {
+      # almohada synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "cojin"
+    } else if (grepl("ana", Mcombined$response[j]) && Mcombined$imgFilename[j] == "pineapple.png") {
+      # pinya synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "ananas"
+    } else if (grepl("cob", Mcombined$response[j]) && Mcombined$imgFilename[j] == "blanket.png") {
+      # manta synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "cobija"
+    } else if (grepl("cit", Mcombined$response[j]) && Mcombined$imgFilename[j] == "lemon.png") {
+      # limon synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "citron"
+    } else if (grepl("ori", Mcombined$response[j]) && Mcombined$imgFilename[j] == "sausage.png") {
+      # salchicha synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "chorizo"
+    } else if (grepl("bomb", Mcombined$response[j]) && Mcombined$imgFilename[j] == "straw.png") {
+      # paja synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "bombilla"
+    } else if (grepl("ca", Mcombined$response[j]) && Mcombined$imgFilename[j] == "candle.png") {
+      # vela synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "candela"
+    } else if (grepl("cer", Mcombined$response[j]) && Mcombined$imgFilename[j] == "chain.png") {
+      # cadena synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "cerradura"
+    } else if (grepl("stam", Mcombined$response[j]) && Mcombined$imgFilename[j] == "stamp.png") {
+      # sello synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "estampilla"
+    } else if (grepl("zap", Mcombined$response[j]) && Mcombined$imgFilename[j] == "pumpkin.png") {
+      # calabaza synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "zapallo"
+    }
+  } 
+  
+  rm(pos)
 }
+
+for (j in 1:nrow(Mcombined)) {
+  if (Mcombined$error[j]==0){
+    Mcombined$Corr[j] <- Mcombined$OrigLen[j]
+    Mcombined$Incorr[j] <- 0
+    Mcombined$phoncorr[j]  <- Mcombined$OrigLen[j]
+    Mcombined$phonincorr[j]  <- 0
+  } else if (Mcombined$error[j]==100){
+    Mcombined$Corr[j] <- 0
+    Mcombined$Incorr[j] <- Mcombined$OrigLen[j]
+    Mcombined$phoncorr[j]  <- 0
+    Mcombined$phonincorr[j]  <- Mcombined$OrigLen[j]
+  }
+}
+
+Mcombined$Total <- Mcombined$phoncorr + Mcombined$phonincorr
+Mcombined$CorrPer <- Mcombined$phoncorr/Mcombined$Total
+Mcombined$Corr <- round(Mcombined$CorrPer*Mcombined$OrigLen,0)
+Mcombined$Incorr <- Mcombined$OrigLen-Mcombined$Corr
+Mcombined$Ratio <- (Mcombined$Corr/Mcombined$OrigLen)*100
+
 
 #### run a model that tests whether performance goes back to baseline 
 Mcombined$session <- as.factor(Mcombined$session)
 #Mcombined$session <- relevel(Mcombined$session, ref = "2")
 contrasts(Mcombined$session) <- contr.treatment(3)
 colnames(contrasts(Mcombined$session)) <- c("T1-T2", "T1-T3")
-Mcombined[Mcombined$error==100,]$error <- 1
 
-modelerror <- glmer(error ~ session + 
-                      (1|ppn) + (1|imgFilename), family = binomial, control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), data = Mcombined)
+modelerror <- glmer(cbind(Corr, Incorr) ~ session + (1|ppn) + (1|imgFilename), 
+                    family = binomial, 
+                    control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), 
+                    data = Mcombined)
 summary(modelerror)
 
 e <- effect("session",modelerror)
@@ -140,11 +231,10 @@ plot(e)
 
 
 # plot the raw data
-
 aggregatedfull <- ddply(Mcombined, .(session, ppn), 
                         plyr::summarise,
-                        mean = mean(error, na.rm = T),
-                        sem = sd(error, na.rm = T)/sqrt(length(error)))
+                        mean = mean(Ratio, na.rm = T),
+                        sem = sd(Ratio, na.rm = T)/sqrt(length(Ratio)))
 
 aggregatedmean <- ddply(aggregatedfull, .(session), 
                         plyr::summarise,

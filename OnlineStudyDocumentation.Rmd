@@ -1,0 +1,421 @@
+---
+title: "Online Study Analysis Documentation"
+author: "Anne Mickan"
+date: "10 January 2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r load packages and data, echo = FALSE, warning=FALSE}
+#### load packages ####
+library(readxl)
+library(ggplot2)
+library(plyr)
+
+#### read data #####
+setwd("//cnas.ru.nl/wrkgrp/STD-OnlineStudy_DataCoding")
+T3 <- read_excel("T3_PicNaming_DataCoded_new.xlsx")
+T2 <- read_excel("T2_PicNaming_DataCoded.xlsx")
+T1 <- read_excel("T1_PicNaming_DataCoded.xlsx")
+
+# subset to coded people 
+T3[T3=='NA'] <- NA
+T2[T2=='NA'] <- NA
+T1[T1=='NA'] <- NA
+T3[is.na(T3$error) == 0,]-> T3sub
+T2[is.na(T2$error) == 0,]-> T2sub
+T1[is.na(T1$error) == 0,]-> T1sub
+
+# prep data for plotting later on 
+T3sub$error <- as.numeric(T3sub$error)
+T3sub$phoncorr <- as.numeric(T3sub$phoncorr)
+T3sub$phonincorr <- as.numeric(T3sub$phonincorr)
+for (i in 1:nrow(T3sub)){
+  if (is.na(T3sub$error[i]) == 0 && T3sub$error[i] == 999){
+    T3sub$error[i] <- T3sub$phonincorr[i]/(T3sub$phonincorr[i]+T3sub$phoncorr[i])
+  }
+}
+
+T2sub$error <- as.numeric(T2sub$error)
+T2sub$phoncorr <- as.numeric(T2sub$phoncorr)
+T2sub$phonincorr <- as.numeric(T2sub$phonincorr)
+for (i in 1:nrow(T2sub)){
+  if (is.na(T2sub$error[i]) == 0 && T2sub$error[i] == 999){
+    T2sub$error[i] <- T2sub$phonincorr[i]/(T2sub$phonincorr[i]+T2sub$phoncorr[i])
+  }
+}
+
+T1sub$error <- as.numeric(T1sub$error)
+T1sub$phoncorr <- as.numeric(T1sub$phoncorr)
+T1sub$phonincorr <- as.numeric(T1sub$phonincorr)
+for (i in 1:nrow(T1sub)){
+  if (is.na(T1sub$error[i]) == 0 && T1sub$error[i] == 999){
+    T1sub$error[i] <- T1sub$phonincorr[i]/(T1sub$phonincorr[i]+T1sub$phoncorr[i])
+  }
+}
+
+### subset T2 and T1 to those that have been coded for T3 (which is currently the smallest group of people)
+T3sub$ppn <- as.factor(T3sub$ppn)
+T2sub$ppn <- as.factor(T2sub$ppn)
+T1sub$ppn <- as.factor(T1sub$ppn)
+
+nums <- which(table(T2sub$ppn) < 144)
+nums <- names(nums)
+if (length(nums) > 0){
+  for (i in 1:length(nums)){
+  T2sub <- T2sub[-which(T2sub$ppn == nums),]}
+}
+T2sub$ppn <- droplevels(T2sub$ppn)
+nums <- which(table(T3sub$ppn) < 144)
+nums <- names(nums)
+if (length(nums) > 0){
+  for (i in 1:length(nums)){
+  T3sub <- T3sub[-which(T3sub$ppn == nums),]}
+}
+T3sub$ppn <- droplevels(T3sub$ppn)
+nums <- which(table(T1sub$ppn) < 144)
+nums <- names(nums)
+if (length(nums) > 0){
+  for (i in 1:length(nums)){
+  T1sub <- T1sub[-which(T1sub$ppn == nums[i]),]}
+}
+T1sub$ppn <- droplevels(T1sub$ppn)
+
+T2sub2 <- T2sub[T2sub$ppn %in% T3sub$ppn,]
+T2sub2$ppn <- droplevels(T2sub2$ppn)
+T2sub2 <- T2sub2[T2sub2$ppn %in% T1sub$ppn,]
+T2sub2$ppn <- droplevels(T2sub2$ppn)
+T3sub2 <- T3sub[T3sub$ppn %in% T1sub$ppn,]
+T3sub2$ppn <- droplevels(T3sub2$ppn)
+T3sub2 <- T3sub2[T3sub2$ppn %in% T2sub$ppn,]
+T3sub2$ppn <- droplevels(T3sub2$ppn)
+T1sub2 <- T1sub[T1sub$ppn %in% T3sub2$ppn,]
+T1sub2$ppn <- droplevels(T1sub2$ppn)
+T1sub2 <- T1sub2[T1sub2$ppn %in% T2sub2$ppn,]
+T1sub2$ppn <- droplevels(T1sub2$ppn)
+T2sub3 <- T2sub[T2sub$ppn %in% T3sub$ppn,]
+T2sub3$ppn <- droplevels(T2sub3$ppn)
+T3sub3 <- T3sub[T3sub$ppn %in% T2sub$ppn,]
+T3sub3$ppn <- droplevels(T3sub3$ppn)
+
+# reorder T1 column names 
+T2sub2 <- T2sub2[, -1]
+T3sub2 <- T3sub2[, -1]
+T1sub2 <- T1sub2[,names(T3sub2)]
+
+## combine the datasets into one big one and into smaller datasets for conditional analyses below
+# dataset with all three timepoints in it
+Mcombinedfull <- rbind(T1sub2, T2sub2, T3sub2)
+Mcombinedfull$session <- rep(c(1,2,3), each = nrow(T2sub2)) 
+Mcombinedfull$error <- Mcombinedfull$error*100 
+# dataset with only T2 and T3 
+Mcombinedforget <- rbind(T2sub3, T3sub3)
+Mcombinedforget$session <- rep(c(2,3), each = nrow(T2sub3)) 
+Mcombinedforget$error <- Mcombinedforget$error*100
+```
+
+# Histogram for error rates for all three time points
+## T1 (N= `r length(levels(T1sub$ppn))`)
+```{r T1_hist, echo = FALSE, warning=FALSE, message=FALSE}
+aggregatedT1 <- ddply(T1sub, .(ppn), 
+                             plyr::summarise,
+                             mean = mean(error),
+                             sem = sd(error)/sqrt(length(error)))
+ggplot(data = aggregatedT1, aes(x = mean)) +
+  geom_histogram() +
+  stat_bin(bins = 20)
+```
+
+## T2 (N= `r length(levels(T2sub$ppn))`)
+```{r T2_hist, echo = FALSE, warning=FALSE, message=FALSE}
+aggregatedT2 <- ddply(T2sub, .(ppn), 
+                             plyr::summarise,
+                             mean = mean(error),
+                             sem = sd(error)/sqrt(length(error)))
+ggplot(data = aggregatedT2, aes(x = mean)) +
+  geom_histogram() +
+  stat_bin(bins = 20)
+```
+
+## T3 (N= `r length(levels(T3sub$ppn))`)
+```{r T3_hist, echo = FALSE, warning=FALSE, message=FALSE}
+aggregatedT3 <- ddply(T3sub, .(ppn), 
+                             plyr::summarise,
+                             mean = mean(error),
+                             sem = sd(error)/sqrt(length(error)))
+ggplot(data = aggregatedT3, aes(x = mean)) +
+  geom_histogram() +
+  stat_bin(bins = 20)
+```
+
+# Error rates over time with grand mean in red (including only the people that have been coded for all timepoints, N= `r length(levels(T3sub2$ppn))`)
+
+```{r error_rates_all, echo=FALSE, warning=FALSE, message=FALSE}
+aggregatedfull <- ddply(Mcombinedfull, .(session, ppn), 
+                             plyr::summarise,
+                             mean = mean(error, na.rm = T),
+                             sem = sd(error, na.rm = T)/sqrt(length(error)))
+
+aggregatedmean <- ddply(aggregatedfull, .(session), 
+                    plyr::summarise,
+                    condition_mean = mean(mean),
+                    condition_sem = sd(mean)/sqrt(length(mean)))
+
+combinedfull <- merge(aggregatedfull, aggregatedmean, by = c("session"))
+
+## plot absolute error rates per person and grand mean in red on top 
+lineplot <- ggplot(combinedfull, aes(y = mean, x = session, group = ppn))
+lineplot + geom_point(color = "darkgrey") +
+  geom_line(color = "darkgrey") +
+  geom_point(aes(y = condition_mean), color = "red") + 
+  geom_line(aes(y = condition_mean), color = "red", size = 1) + 
+  geom_errorbar(aes(ymin=condition_mean-condition_sem,
+                    ymax=condition_mean+condition_sem),
+                    width = 0.5, color = "red", size = 1) +
+  geom_text(data = combinedfull[combinedfull$session==3,], aes(label=ppn), size = 3, nudge_x = c(0.2)) +
+  theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20)) + 
+  scale_x_continuous(name = "Session", breaks = c(1,2,3),labels=c("T1","T2", "T3"), expand = c(0.1,0.1)) +
+  ylab("Error rates") +
+  #scale_color_manual(guide=F, "Language Condition", values=c("dodgerblue4","firebrick"),labels=c("Dutch","English")) +
+  theme_bw()
+
+## plot absolute error rates per person by color, no grand mean on top
+lineplot <- ggplot(combinedfull, aes(y = mean, x = session, group = ppn))
+lineplot + geom_point(aes(color = ppn)) +
+  geom_line(aes(color = ppn)) +
+  #geom_text(aes(label=ppn), size = 3, nudge_x = c(0.1)) +
+  theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20)) + 
+  scale_x_continuous(name = "Session", breaks = c(1,2,3),labels=c("T1","T2", "T3"), expand = c(0.1,0.1)) +
+  ylab("Error rates") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+```
+
+# Looking only at T2 & T3 (N= `r length(levels(T3sub3$ppn))`)
+##Forgetting rate with grand mean in red (words known at T2 but (partially) forgotten at T3)
+``` {r forget_rates, echo=FALSE, warning=FALSE, message=FALSE}
+T3sub3$errort2 <- NA
+ppn <- unique(T2sub3$ppn)
+for (i in 1:length(ppn)) {
+  ppnn <- ppn[i]
+  for (k in 1:length(T3sub3[T3sub3$ppn == ppnn,]$imgFilename)){
+    num <- which(T2sub3[T2sub3$ppn == ppnn,]$imgFilename == T3sub3[T3sub3$ppn == ppnn,]$imgFilename[k])
+      if (length(num) == 1){
+        T3sub3[T3sub3$ppn == ppnn,]$errort2[k] <- T2sub3[T2sub3$ppn == ppnn,]$error[num]
+      }
+  }
+}
+
+T3sub4 <- T3sub3[T3sub3$errort2 == 0,]
+T2sub4 <- T2sub3[T2sub3$error == 0,]
+T3sub4 <-T3sub4[,-18]
+
+Mcombinedforget2 <- rbind(T2sub4, T3sub4)
+Mcombinedforget2$session <- rep(c(2,3), each = nrow(T2sub4)) 
+Mcombinedforget2$error <- Mcombinedforget2$error*100
+
+aggregated2 <- ddply(Mcombinedforget2, .(session, ppn), 
+                    plyr::summarise,
+                    mean = mean(error),
+                    sem = sd(error)/sqrt(length(error)))
+
+
+aggregatedmean2 <- ddply(aggregated2, .(session), 
+                        plyr::summarise,
+                        condition_mean = mean(mean),
+                        condition_sem = sd(mean)/sqrt(length(mean)))
+
+combined2 <- merge(aggregated2, aggregatedmean2, by = c("session"))
+
+### plot percentage forgotten from T2 to T3 (based on words known at T2)
+lineplot <- ggplot(combined2, aes(y = mean, x = session, group = ppn))
+lineplot + geom_point(color = "darkgrey") +
+  geom_line(color = "darkgrey") +
+  geom_point(aes(y = condition_mean), color = "red") + 
+  geom_line(aes(y = condition_mean), color = "red", size = 1) + 
+  geom_errorbar(aes(ymin=condition_mean-condition_sem,
+                    ymax=condition_mean+condition_sem),
+                width = 0.5, color = "red", size = 1) +
+  geom_text(aes(label=ppn), size = 3, nudge_x = c(0.1)) +
+  theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20)) + 
+  scale_x_continuous(name = "Session", labels=c("T2", "T3"), breaks = c(2,3), expand = c(0.1,0.1)) +
+  ylab("Error rates (only including words that were known at T2)") +
+  theme_bw()
+
+### plot percentage forgotten from T2 to T3 (based on words known at T2) withouth grand mean
+lineplot <- ggplot(combined2, aes(y = mean, x = session, group = ppn))
+lineplot + geom_point(aes(color = ppn)) +
+  geom_line(aes(color = ppn)) +
+ # geom_text(data = combined2[combined2$session=="3",], aes(label=ppn), size = 3, nudge_x = c(0.1)) +
+  theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20)) + 
+  scale_x_continuous(name = "Session", labels=c("T2", "T3"), breaks = c(2,3), expand = c(0.1,0.1)) +
+  ylab("Error rates (only including words that were known at T2)") +
+  theme_bw() +
+  theme(legend.position = "none")
+```
+
+## Learning rates per person from T2 to T3 (words unknown at T2 but known at T3)
+``` {r learn_rates_t2_t3, echo=FALSE, warning=FALSE, message=FALSE}
+### plot how many out of the unknown words at T2 people actualy learned by T3
+T3sub3_learn <- T3sub3[T3sub3$errort2 == 1,]
+T2sub3_learn <- T2sub3[T2sub3$error == 1,]
+T3sub3_learn <-T3sub3_learn[,-18]
+Mcombined2_learn <- rbind(T2sub3_learn, T3sub3_learn)
+Mcombined2_learn$session <- rep(c(2,3), each = nrow(T2sub3_learn)) 
+Mcombined2_learn$error <- Mcombined2_learn$error*100
+
+aggregated2_learn <- ddply(Mcombined2_learn, .(session, ppn), 
+                     plyr::summarise,
+                     mean = mean(error),
+                     sem = sd(error)/sqrt(length(error)))
+
+aggregatedmean2_learn <- ddply(aggregated2_learn, .(session), 
+                         plyr::summarise,
+                         condition_mean = mean(mean),
+                         condition_sem = sd(mean)/sqrt(length(mean)))
+
+combined2_learn <- merge(aggregated2_learn, aggregatedmean2_learn, by = c("session"))
+
+### plot percentage learned from T2 to T3 (based on words unknown at T2) with grand mean
+lineplot <- ggplot(combined2_learn, aes(y = mean, x = session, group = ppn))
+lineplot + geom_point(color = "darkgrey") +
+  geom_line(color = "darkgrey") +
+  geom_point(aes(y = condition_mean), color = "red") + 
+  geom_line(aes(y = condition_mean), color = "red", size = 1) + 
+  geom_errorbar(aes(ymin=condition_mean-condition_sem,
+                    ymax=condition_mean+condition_sem),
+                width = 0.5, color = "red", size = 1) +
+  geom_text(data = combined2_learn[combined2_learn$session=="3",], aes(label=ppn), size = 3, nudge_x = c(0.1)) +
+  theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20)) + 
+  scale_x_continuous(name = "Session", labels=c("T2", "T3"), breaks = c(2,3), expand = c(0.1,0.1)) +
+  ylab("Error rates (only including words that were unknown at T2)") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+### plot percentage learned from T2 to T3 (based on words unknown at T2) withouth grand mean
+lineplot <- ggplot(combined2_learn, aes(y = mean, x = session, group = ppn))
+lineplot + geom_point(aes(color = ppn)) +
+  geom_line(aes(color = ppn)) +
+  theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20)) + 
+  scale_x_continuous(name = "Session", labels=c("T2", "T3"), breaks = c(2,3), expand = c(0.1,0.1)) +
+  ylab("Error rates (only including words that were unknown at T2)") +
+  theme_bw() +
+  theme(legend.position = "none")
+```
+
+# Looking only at T1 & T2 
+##Learning rate from T1 to T2
+
+```{r learnT1T2, echo=FALSE, warning=FALSE, message=FALSE}
+T2sub2$errort1 <- NA
+ppn <- unique(T2sub2$ppn)
+for (i in 1:length(ppn)) {
+  ppnn <- ppn[i]
+  for (k in 1:length(T1sub2[T1sub2$ppn == ppnn,]$imgFilename)){
+    num <- which(T2sub2[T2sub2$ppn == ppnn,]$imgFilename == T1sub2[T1sub2$ppn == ppnn,]$imgFilename[k])
+    if (length(num) == 1){
+      T2sub2[T2sub2$ppn == ppnn,]$errort1[num] <- T1sub2[T1sub2$ppn == ppnn,]$error[k]
+    }
+  }
+}
+
+T1sub4 <- T1sub2[T1sub2$error == 1,]
+T2sub4 <- T2sub2[T2sub2$errort1 == 1,]
+T2sub4 <- T2sub4[,-17]
+
+Mcombined3_learn <- rbind(T1sub4, T2sub4)
+Mcombined3_learn$session <- rep(c(1,2), each = nrow(T1sub4)) 
+Mcombined3_learn$error <- Mcombined3_learn$error*100
+
+aggregated3_learn <- ddply(Mcombined3_learn, .(session, ppn), 
+                     plyr::summarise,
+                     mean = mean(error),
+                     sem = sd(error)/sqrt(length(error)))
+
+aggregatedmean3_learn <- ddply(aggregated3_learn, .(session), 
+                         plyr::summarise,
+                         condition_mean = mean(mean),
+                         condition_sem = sd(mean)/sqrt(length(mean)))
+
+combined3_learn <- merge(aggregated3_learn, aggregatedmean3_learn, by = c("session"))
+
+### plot percentage learned from T1 to T2 (based on words unknown at T1) with grand mean
+lineplot <- ggplot(combined3_learn, aes(y = mean, x = session, group = ppn))
+lineplot + geom_point(color = "darkgrey") +
+  geom_line(color = "darkgrey") +
+  geom_point(aes(y = condition_mean), color = "red") + 
+  geom_line(aes(y = condition_mean), color = "red", size = 1) + 
+  geom_errorbar(aes(ymin=condition_mean-condition_sem,
+                    ymax=condition_mean+condition_sem),
+                width = 0.5, color = "red", size = 1) +
+  geom_text(data = combined3_learn[combined3_learn$session=="2",], aes(label=ppn), size = 3, nudge_x = c(0.1)) +
+  theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20)) + 
+  scale_x_continuous(name = "Session", labels=c("T1", "T2"), breaks = c(1,2), expand = c(0.1,0.1)) +
+  ylab("Error rates (only including words that were unknown at T1)") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+### plot percentage learned from T2 to T3 (based on words unknown at T2) withouth grand mean
+lineplot <- ggplot(combined3_learn, aes(y = mean, x = session, group = ppn))
+lineplot + geom_point(aes(color = ppn)) +
+  geom_line(aes(color = ppn)) +
+  theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20)) + 
+  scale_x_continuous(name = "Session", labels=c("T1", "T2"), breaks = c(1,2), expand = c(0.1,0.1)) +
+  ylab("Error rates (only including words that were unknown at T1)") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+```
+
+## Forgetting from T1 to T2 
+```{r T1_T2_forget, echo=FALSE, warning=FALSE, message=FALSE}
+T1sub5 <- T1sub2[T1sub2$error == 0,]
+T2sub5 <- T2sub2[T2sub2$errort1 == 0,]
+T2sub5 <- T2sub5[,-17]
+
+Mcombined4_forget <- rbind(T1sub5, T2sub5)
+Mcombined4_forget$session <- rep(c(1,2), each = nrow(T1sub5)) 
+Mcombined4_forget$error <- Mcombined4_forget$error*100
+
+aggregated4_forget <- ddply(Mcombined4_forget, .(session, ppn), 
+                     plyr::summarise,
+                     mean = mean(error),
+                     sem = sd(error)/sqrt(length(error)))
+
+aggregatedmean4_forget <- ddply(aggregated4_forget, .(session), 
+                         plyr::summarise,
+                         condition_mean = mean(mean),
+                         condition_sem = sd(mean)/sqrt(length(mean)))
+
+combined4_forget <- merge(aggregated4_forget, aggregatedmean4_forget, by = c("session"))
+
+### plot percentage learned from T1 to T2 (based on words unknown at T1) with grand mean
+lineplot <- ggplot(combined4_forget, aes(y = mean, x = session, group = ppn))
+lineplot + geom_point(color = "darkgrey") +
+  geom_line(color = "darkgrey") +
+  geom_point(aes(y = condition_mean), color = "red") + 
+  geom_line(aes(y = condition_mean), color = "red", size = 1) + 
+  geom_errorbar(aes(ymin=condition_mean-condition_sem,
+                    ymax=condition_mean+condition_sem),
+                width = 0.5, color = "red", size = 1) +
+  geom_text(data = combined4_forget[combined4_forget$session=="2",], aes(label=ppn), size = 3, nudge_x = c(0.1)) +
+  theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20)) + 
+  scale_x_continuous(name = "Session", labels=c("T1", "T2"), breaks = c(1,2), expand = c(0.1,0.1)) +
+  ylab("Error rates (only including words that were known at T1)") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+### plot percentage learned from T2 to T3 (based on words unknown at T2) withouth grand mean
+lineplot <- ggplot(combined4_forget, aes(y = mean, x = session, group = ppn))
+lineplot + geom_point(aes(color = ppn)) +
+  geom_line(aes(color = ppn)) +
+  theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20)) + 
+  scale_x_continuous(name = "Session", labels=c("T1", "T2"), breaks = c(1,2), expand = c(0.1,0.1)) +
+  ylab("Error rates (only including words that were known at T1)") +
+  theme_bw() +
+  theme(legend.position = "none")
+```

@@ -1,0 +1,399 @@
+---
+title: "What predicts forgetting after a study abroad?"
+author: "Anne Mickan"
+date: "13 januari 2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r load packages and data, echo = FALSE, warning=FALSE,message = F, include = F}
+#### load packages ####
+library(readxl)
+library(ggplot2)
+library(plyr)
+library(lme4)
+
+#### read data #####
+setwd("//cnas.ru.nl/wrkgrp/STD-OnlineStudy_DataCoding")
+T3 <- read_excel("T3_PicNaming_DataCoded_new.xlsx")
+T2 <- read_excel("T2_PicNaming_DataCoded.xlsx")
+T1 <- read_excel("T1_PicNaming_DataCoded.xlsx")
+
+# subset to coded people 
+T3[T3=='NA'] <- NA
+T2[T2=='NA'] <- NA
+T1[T1=='NA'] <- NA
+T3[is.na(T3$error) == 0,]-> T3sub
+T2[is.na(T2$error) == 0,]-> T2sub
+T1[is.na(T1$error) == 0,]-> T1sub
+
+# prep data for plotting later on 
+T3sub$error <- as.numeric(T3sub$error)
+T3sub$phoncorr <- as.numeric(T3sub$phoncorr)
+T3sub$phonincorr <- as.numeric(T3sub$phonincorr)
+for (i in 1:nrow(T3sub)){
+  if (is.na(T3sub$error[i]) == 0 && T3sub$error[i] == 999){
+    T3sub$error[i] <- T3sub$phonincorr[i]/(T3sub$phonincorr[i]+T3sub$phoncorr[i])
+  }
+}
+
+T2sub$error <- as.numeric(T2sub$error)
+T2sub$phoncorr <- as.numeric(T2sub$phoncorr)
+T2sub$phonincorr <- as.numeric(T2sub$phonincorr)
+for (i in 1:nrow(T2sub)){
+  if (is.na(T2sub$error[i]) == 0 && T2sub$error[i] == 999){
+    T2sub$error[i] <- T2sub$phonincorr[i]/(T2sub$phonincorr[i]+T2sub$phoncorr[i])
+  }
+}
+
+T1sub$error <- as.numeric(T1sub$error)
+T1sub$phoncorr <- as.numeric(T1sub$phoncorr)
+T1sub$phonincorr <- as.numeric(T1sub$phonincorr)
+for (i in 1:nrow(T1sub)){
+  if (is.na(T1sub$error[i]) == 0 && T1sub$error[i] == 999){
+    T1sub$error[i] <- T1sub$phonincorr[i]/(T1sub$phonincorr[i]+T1sub$phoncorr[i])
+  }
+}
+
+### subset T2 and T1 to those that have been coded for T3 (which is currently the smallest group of people)
+T3sub$ppn <- as.factor(T3sub$ppn)
+T2sub$ppn <- as.factor(T2sub$ppn)
+T1sub$ppn <- as.factor(T1sub$ppn)
+
+nums <- which(table(T2sub$ppn) < 144)
+nums <- names(nums)
+if (length(nums) > 0){
+  for (i in 1:length(nums)){
+  T2sub <- T2sub[-which(T2sub$ppn == nums),]}
+}
+T2sub$ppn <- droplevels(T2sub$ppn)
+nums <- which(table(T3sub$ppn) < 144)
+nums <- names(nums)
+if (length(nums) > 0){
+  for (i in 1:length(nums)){
+  T3sub <- T3sub[-which(T3sub$ppn == nums),]}
+}
+T3sub$ppn <- droplevels(T3sub$ppn)
+nums <- which(table(T1sub$ppn) < 144)
+nums <- names(nums)
+if (length(nums) > 0){
+  for (i in 1:length(nums)){
+  T1sub <- T1sub[-which(T1sub$ppn == nums[i]),]}
+}
+T1sub$ppn <- droplevels(T1sub$ppn)
+
+T2sub2 <- T2sub[T2sub$ppn %in% T3sub$ppn,]
+T2sub2$ppn <- droplevels(T2sub2$ppn)
+T2sub2 <- T2sub2[T2sub2$ppn %in% T1sub$ppn,]
+T2sub2$ppn <- droplevels(T2sub2$ppn)
+T3sub2 <- T3sub[T3sub$ppn %in% T1sub$ppn,]
+T3sub2$ppn <- droplevels(T3sub2$ppn)
+T3sub2 <- T3sub2[T3sub2$ppn %in% T2sub$ppn,]
+T3sub2$ppn <- droplevels(T3sub2$ppn)
+T1sub2 <- T1sub[T1sub$ppn %in% T3sub2$ppn,]
+T1sub2$ppn <- droplevels(T1sub2$ppn)
+T1sub2 <- T1sub2[T1sub2$ppn %in% T2sub2$ppn,]
+T1sub2$ppn <- droplevels(T1sub2$ppn)
+T2sub3 <- T2sub[T2sub$ppn %in% T3sub$ppn,]
+T2sub3$ppn <- droplevels(T2sub3$ppn)
+T3sub3 <- T3sub[T3sub$ppn %in% T2sub$ppn,]
+T3sub3$ppn <- droplevels(T3sub3$ppn)
+
+# reorder T1 column names 
+T2sub2 <- T2sub2[, -1]
+T3sub2 <- T3sub2[, -1]
+T1sub2 <- T1sub2[,names(T3sub2)]
+
+## combine the datasets into one big one and into smaller datasets for conditional analyses below
+# dataset with all three timepoints in it
+Mcombinedfull <- rbind(T1sub2, T2sub2, T3sub2)
+Mcombinedfull$session <- rep(c(1,2,3), each = nrow(T2sub2)) 
+Mcombinedfull$error <- Mcombinedfull$error*100 
+# dataset with only T2 and T3 
+Mcombined <- rbind(T2sub3, T3sub3)
+Mcombined$session <- rep(c(2,3), each = nrow(T2sub3)) 
+Mcombined$error <- Mcombined$error*100
+
+## Adjusting phoneme correct and incorrect counts 
+# read in the file that contains the phoneme count 
+setwd("//ru.nl/wrkgrp/STD-OnlineStudy_DataCoding")
+lenwords <- read.delim("FullListWords_SpanishNaming.txt")
+
+# adjust existing phoneme correct and incorrect counts 
+Mcombined$OrigLen <- NA
+Mcombined$img <- gsub(".png", "", Mcombined$imgFilename)
+
+for (j in 1:nrow(Mcombined)) {
+  pos <- which(tolower(as.character(lenwords$English)) == tolower(as.character(Mcombined$img[j])))
+  Mcombined$OrigLen[j] <- lenwords$TotalPhon[pos]
+  
+  if (is.na(lenwords$AltPhon[pos])==1) {}
+  else if (is.na(lenwords$AltPhon[pos])==0 && is.na(Mcombined$response[j])==0) {
+    if (grepl("man", Mcombined$response[j]) && Mcombined$imgFilename[j] == "peanut.png") {
+      # cacahuete synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "mani"
+    } else if (grepl("pil", Mcombined$response[j]) && Mcombined$imgFilename[j] == "battery.png") {
+      # batteria synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "pila"
+    } else if (grepl("are", Mcombined$response[j]) && Mcombined$imgFilename[j] == "earring.png") {
+      # pendientes synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "aretes"
+    } else if (grepl("^aro", Mcombined$response[j]) && Mcombined$imgFilename[j] != "ring.png") {
+      # pendientes synonym
+      Mcombined$OrigLen[j] <- lenwords$X[pos]
+      Mcombined$imgFilename[j] <- "aro"
+    } else if (grepl("co", Mcombined$response[j]) && Mcombined$imgFilename[j] == "pillow.png") {
+      # almohada synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "cojin"
+    } else if (grepl("ana", Mcombined$response[j]) && Mcombined$imgFilename[j] == "pineapple.png") {
+      # pinya synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "ananas"
+    } else if (grepl("cob", Mcombined$response[j]) && Mcombined$imgFilename[j] == "blanket.png") {
+      # manta synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "cobija"
+    } else if (grepl("cit", Mcombined$response[j]) && Mcombined$imgFilename[j] == "lemon.png") {
+      # limon synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "citron"
+    } else if (grepl("ori", Mcombined$response[j]) && Mcombined$imgFilename[j] == "sausage.png") {
+      # salchicha synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "chorizo"
+    } else if (grepl("bomb", Mcombined$response[j]) && Mcombined$imgFilename[j] == "straw.png") {
+      # paja synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "bombilla"
+    } else if (grepl("ca", Mcombined$response[j]) && Mcombined$imgFilename[j] == "candle.png") {
+      # vela synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "candela"
+    } else if (grepl("cer", Mcombined$response[j]) && Mcombined$imgFilename[j] == "chain.png") {
+      # cadena synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "cerradura"
+    } else if (grepl("stam", Mcombined$response[j]) && Mcombined$imgFilename[j] == "stamp.png") {
+      # sello synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "estampilla"
+    } else if (grepl("zap", Mcombined$response[j]) && Mcombined$imgFilename[j] == "pumpkin.png") {
+      # calabaza synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "zapallo"
+    }
+  } 
+  
+  rm(pos)
+}
+
+for (j in 1:nrow(Mcombined)) {
+  if (Mcombined$error[j]==0){
+    Mcombined$Corr[j] <- Mcombined$OrigLen[j]
+    Mcombined$Incorr[j] <- 0
+    Mcombined$phoncorr[j]  <- Mcombined$OrigLen[j]
+    Mcombined$phonincorr[j]  <- 0
+  } else if (Mcombined$error[j]==100){
+    Mcombined$Corr[j] <- 0
+    Mcombined$Incorr[j] <- Mcombined$OrigLen[j]
+    Mcombined$phoncorr[j]  <- 0
+    Mcombined$phonincorr[j]  <- Mcombined$OrigLen[j]
+  }
+}
+
+Mcombined$Total <- Mcombined$phoncorr + Mcombined$phonincorr
+
+Mcombined$CorrPer <- Mcombined$phoncorr/Mcombined$Total
+Mcombined$Corr <- round(Mcombined$CorrPer*Mcombined$OrigLen,0)
+Mcombined$Incorr <- Mcombined$OrigLen-Mcombined$Corr
+Mcombined$Ratio <- (Mcombined$Corr/Mcombined$OrigLen)*100
+
+## set contrasts
+Mcombined$session <- as.factor(Mcombined$session)
+contrasts(Mcombined$session) <- c(-0.5, 0.5)
+
+## what predicts changes in error rate from T2 to T3?
+individualdiff <- read.delim("T1_T2_T3_lime_clean.txt", sep = "\t")
+
+## add predictors to the full dataframe 
+colnames(individualdiff)[1] <- "ppn"
+df <- merge(Mcombined, individualdiff, by = "ppn")
+df$GermanEngRatio_T2_T3 <- df$T2_T3_English/df$T2_T3_German
+df$imgFilename <- as.factor(df$imgFilename)
+df$Mot_T2_T3_avg <- (df$Mot_T3_avg+df$Mot_T2_avg)/2
+df$SRP_Spanish_T2_T3 <- df$T3_SRP_Spanish_avg - df$T2_SRP_Spanish_avg
+df$Immersion <- (df$T3_LivingSitGermany_Spanish + df$T3_KeepUpSpanishActively + df$T3_MaintainedSpanishContact + df$T3_WatchSpanishMovies + df$T3_ReadSpanishBooks)/5
+```
+
+```{r basis model, echo = FALSE, warning=FALSE, message = F, include = F}
+ # test each predictor seperately and assess whether its inclusion improves model fit 
+modelsess <- glmer(cbind(Corr, Incorr) ~ session + (1|ppn) + (1|imgFilename), family = binomial, control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), data = df)
+
+modelSpanishFreq <- glmer(cbind(Corr, Incorr) ~ session*scale(T2_T3_Spanish) +
+                            (1|ppn) + (1|imgFilename), family = binomial, control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), data = df)
+aSpan <- anova(modelsess, modelSpanishFreq) ### Spanish frequency of use improves model fit  :-)
+aSpand <- round(aSpan$`Pr(>Chisq)`[2], 3)
+if (aSpand == 0){aSpand<- "<.001"} else {aSpand <- paste("= ", aSpand)}
+
+modelGermanEngl <- glmer(cbind(Corr, Incorr) ~ session*scale(GermanEngRatio_T2_T3) +
+                            (1|ppn) + (1|imgFilename), family = binomial, control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), data = df)
+aGerEng <- anova(modelsess, modelGermanEngl) ### Ratio of German to English frequency of use idoes not improve model fit.
+aGerEngd <- round(aGerEng$`Pr(>Chisq)`[2], 3)
+if (aGerEngd == 0){aGerEngd<- "<.001"} else {aGerEngd <- paste("= ", aGerEngd)}
+
+modelEnglFreq <- glmer(cbind(Corr, Incorr) ~ session*scale(T2_T3_English) +
+                           (1|ppn) + (1|imgFilename), family = binomial, control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), data = df)
+aEng <- anova(modelsess, modelEnglFreq) ### English frequency of use improves model fit.
+aEngd <- round(aEng$`Pr(>Chisq)`[2], 3)
+if (aEngd == 0){aEngd<- "<.001"} else {aEngd <- paste("= ", aEngd)}
+
+modelGerFreq <- glmer(cbind(Corr, Incorr) ~ session*scale(T2_T3_German) +
+                         (1|ppn) + (1|imgFilename), family = binomial, control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), data = df)
+aGer <- anova(modelsess, modelGerFreq) ### German frequency of use improves model fit.
+aGerd <- round(aGer$`Pr(>Chisq)`[2], 3)
+if (aGerd == 0){aGerd<- "<.001"} else {aGerd <- paste("= ", aGerd)}
+
+modelMotivation <- glmer(cbind(Corr, Incorr) ~ session*scale(Mot_T2_T3_avg) +
+                           (1|ppn) + (1|imgFilename), family = binomial, control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), data = df)
+aMot <- anova(modelsess, modelMotivation) ### Motivation improves model fit :-)
+aMotd <- round(aMot$`Pr(>Chisq)`[2], 3)
+if (aMotd == 0){aMotd<- "<.001"} else {aMotd <- paste("= ", aMotd)}
+
+modelSRpSpanish <- glmer(cbind(Corr, Incorr) ~ session*scale(SRP_Spanish_T2_T3) +
+                           (1|ppn) + (1|imgFilename), family = binomial, control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), data = df)
+aSRPSpan <- anova(modelsess, modelSRpSpanish) ### Spansh SRP improves model fit :-)
+aSRPSpand <- round(aSRPSpan$`Pr(>Chisq)`[2], 3)
+if (aSRPSpand == 0){aSRPSpand<- "<.001"} else {aSRPSpand <- paste("= ", aSRPSpand)}
+
+modelImmersion <- glmer(cbind(Corr, Incorr) ~ session*scale(Immersion) +
+                           (1|ppn) + (1|imgFilename), family = binomial, control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), data = df)
+aImm <- anova(modelsess, modelImmersion) ### Immersion improves model fit :-)
+aImmd <- round(aImm$`Pr(>Chisq)`[2], 3)
+if (aImmd == 0){aImmd<- "<.001"} else {aImmd <- paste("= ", aImmd)}
+
+modelSpanishAoA <- glmer(cbind(Corr, Incorr) ~ session*scale(SpanishAoA) +
+                          (1|ppn) + (1|imgFilename), family = binomial, control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), data = df)
+aAoA <- anova(modelsess, modelSpanishAoA) ### Spanish AoA does not improve model fit
+aAoAd <- round(aAoA$`Pr(>Chisq)`[2], 3)
+if (aAoAd == 0){aAoAd<- "<.001"} else {aAoAd <- paste("= ", aAoAd)}
+
+modelAge <- glmer(cbind(Corr, Incorr) ~ session*scale(Age) +
+                           (1|ppn) + (1|imgFilename), family = binomial, control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), data = df)
+aAge <- anova(modelsess, modelAge) ### Age improves model fit
+aAged <- round(aAge$`Pr(>Chisq)`[2], 3)
+if (aAged == 0){aAged<- "<.001"} else {aAged <- paste("= ", aAged)}
+
+modelGender <- glmer(cbind(Corr, Incorr) ~ session*Gender +
+                    (1|ppn) + (1|imgFilename), family = binomial, control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), data = df)
+aGender <- anova(modelsess, modelGender) ### Age improves model fit
+aGenderd <- round(aGender$`Pr(>Chisq)`[2], 3)
+if (aGenderd == 0){aGenderd<- "<.001"} else {aGenderd <- paste("= ", aGenderd)}
+```
+
+## Spanish frequency of use 
+### Improves model fit (p `r aSpand`)
+```{r,  echo = F, warning=F, message = F}
+library(effects)
+library(interactions)
+# Spanish frequency of use
+interact_plot(modelSpanishFreq, pred = T2_T3_Spanish, modx = session, interval = TRUE, robust = TRUE,  int.width = 0.8, data = df) 
+#e <- effect("session*scale(T2_T3_Spanish)",modelSpanishFreq)
+#plot(e)
+```
+
+## Ratio of German to English frequency of use 
+### Does not improve model fit (p `r aGerEngd`)
+
+```{r, echo = F, warning=F, message = F}
+# Ratio of German to English use 
+interact_plot(modelGermanEngl, pred = GermanEngRatio_T2_T3, modx = session, interval = TRUE, robust = TRUE,  int.width = 0.8, data = df) 
+#e <- effect("session*scale(GermanEngRatio_T2_T3)",modelGermanEngl)
+#plot(e)
+```
+
+## English frequency of use 
+### Improves model fit (p `r aEngd`)
+
+```{r echo = F, warning=F}
+# English frequency of use 
+interact_plot(modelEnglFreq, pred = T2_T3_English, modx = session, interval = TRUE, robust = TRUE,  int.width = 0.8, data = df) 
+#e <- effect("session*scale(T2_T3_English)",modelEnglFreq)
+#plot(e)
+```
+
+## German frequency of use 
+### Improves model fit (p `r aGerd`)
+
+```{r echo = F, warning=F}
+# German frequency of use 
+interact_plot(modelGerFreq, pred = T2_T3_German, modx = session, interval = TRUE, robust = TRUE,  int.width = 0.8, data = df) 
+#e <- effect("session*scale(T2_T3_German)",modelGerFreq)
+#plot(e)
+```
+
+## Motivation to learn spanish 
+### Improves model fit (p `r aMotd`)
+
+```{r echo = F, warning=F}
+# Motivation Spanish
+interact_plot(modelMotivation, pred = Mot_T2_T3_avg, modx = session, interval = TRUE, robust = TRUE,  int.width = 0.8, data = df) 
+#e <- effect("session*scale(Mot_T2_T3_avg)",modelMotivation)
+#plot(e)
+```
+
+## Spanish proficiency self-ratings (T3-T2)
+### Improves model fit (p `r aSRPSpand`)
+
+```{r echo = F, warning=F}
+# Spanish proficiency self-rated
+interact_plot(modelSRpSpanish, pred = SRP_Spanish_T2_T3, modx = session, interval = TRUE, robust = TRUE,  int.width = 0.8, data = df) 
+#e <- effect("session*scale(SRP_Spanish_T2_T3)",modelSRpSpanish)
+#plot(e)
+```
+
+## Immersion in Spanish culture in Germany after study abroad
+### Improves model fit (p `r aImmd`)
+
+```{r echo = F, warning=F}
+# Continued immersion in Spanish culture after return to Germany
+interact_plot(modelImmersion, pred = Immersion, modx = session, interval = TRUE, robust = TRUE,  int.width = 0.8, data = df) 
+#e <- effect("session*scale(Immersion)",modelImmersion)
+#plot(e)
+```
+
+## Spanish AoA
+### Improves model fit (p `r aAoAd`)
+
+```{r echo = F, warning=F}
+# Spanish AoA
+interact_plot(modelSpanishAoA, pred = SpanishAoA, modx = session, interval = TRUE, robust = TRUE,  int.width = 0.8, data = df) 
+#e <- effect("session*scale(SpanishAoA)",modelSpanishAoA)
+#plot(e)
+```
+
+## Age
+### Improves model fit (p `r aAged`)
+
+```{r echo = F, warning=F}
+# Age
+interact_plot(modelAge, pred = Age, modx = session, interval = TRUE, robust = TRUE,  int.width = 0.8, data = df) 
+#e <- effect("session*scale(Age)",modelAge)
+#plot(e)
+```
+
+## Gender
+### Improves model fit (p `r aGenderd`)
+
+```{r echo = F, warning=F}
+# gender
+cat_plot(modelGender, pred = Gender, modx = session, interval = TRUE, robust = TRUE,  int.width = 0.8, data = df) 
+#e <- effect("session*Gender",modelGender)
+#plot(e)
+```

@@ -238,10 +238,12 @@ df                       <- merge(Mcombined, individualdiff, by = "ppn")
 df$GermanEngRatio_T2_T3  <- df$T2_T3_English/df$T2_T3_German
 df$imgFilename           <- as.factor(df$imgFilename)
 df$Mot_T2_T3_avg         <- (df$Mot_T3_pos_avg+df$Mot_T2_pos_avg)/2
+df$IntegMot_T2_T3_avg    <- ((df$Mot_T2_attitude + df$Mot_T2_integrative + df$Mot_T2_interest)/3 + (df$Mot_T3_attitude + df$Mot_T3_integrative+ df$Mot_T3_interest)/3)/2
 #df$Mot_T2_T3_diff       <- df$Mot_T3_pos_avg-df$Mot_T2_pos_avg
 df$SRP_Spanish_T2_T3     <- df$T3_SRP_Spanish_avg - df$T2_SRP_Spanish_avg
 df$Immersion             <- (df$T3_LivingSitGermany_Spanish + df$T3_WatchSpanishMovies + df$T3_ReadSpanishBooks)/3
 df$Mot_T2_T3_anxiety_avg <- (df$Mot_T3_anxiety+df$Mot_T2_anxiety)/2
+df$Mot_T2_T3_instr_avg   <- (df$Mot_T3_instrumental+df$Mot_T2_instrumental)/2
 
 # add cognate status to dataframe 
 lenwords                 <- read.delim("FullListWords_SpanishNaming.txt")
@@ -312,21 +314,29 @@ anova(modelsess, modelGerFreq) # --> German frequency of use improves model fit.
 # because both German and English frequency improve model fit, but only can enter, compare the two models directly and take the better one
 anova(modelEnglFreq, modelGerFreq) # --> the model with German frequency of use has the better model fit 
 
-# Motivation to maintain Spanish when back in Germany
-modelMotivation <- glmer(cbind(Corr, Incorr) ~ session*scale(Mot_T2_T3_avg) + (1|ppn) + (1|imgFilename), 
+# Integrative Motivation and attitude to maintain Spanish when back in Germany
+modelMotivation <- glmer(cbind(Corr, Incorr) ~ session*scale(IntegMot_T2_T3_avg) + (1|ppn) + (1|imgFilename), 
                          family = binomial, 
                          control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), 
                          data = df)
 summary(modelMotivation)
 anova(modelsess, modelMotivation) ### Motivation improves model fit :-)
 
-# Anxiety to speak Spanish when back in Germany: does it add anything to the motivation model?
-modelMotivationAnxiety <- glmer(cbind(Corr, Incorr) ~ session*scale(Mot_T2_T3_avg) + session*scale(Mot_T2_T3_anxiety_avg) + (1|ppn) + (1|imgFilename), 
+# Anxiety to speak Spanish when back in Germany
+modelMotivationAnxiety <- glmer(cbind(Corr, Incorr) ~ session*scale(Mot_T2_T3_anxiety_avg) + (1|ppn) + (1|imgFilename), 
                                 family = binomial, 
                                 control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), 
                                 data = df)
 summary(modelMotivationAnxiety)
-anova(modelMotivation, modelMotivationAnxiety) ### anxiety added improves model fit :-)
+anova(modelsess, modelMotivationAnxiety) ### anxiety improves model fit :-)
+
+# Instrumental motivation to maintain Spanish: perceived necessity to speak Spanish
+modelMotivationInst <- glmer(cbind(Corr, Incorr) ~ session*scale(Mot_T2_T3_instr_avg) + (1|ppn) + (1|imgFilename), 
+                                family = binomial, 
+                                control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), 
+                                data = df)
+summary(modelMotivationInst)
+anova(modelsess, modelMotivationInst) ### instrumental motivation improves model fit :-)
 
 # Spanish proficiency self-ratings (difference between T2 and T3)
 modelSRpSpanish <- glmer(cbind(Corr, Incorr) ~ session*scale(SRP_Spanish_T2_T3) + (1|ppn) + (1|imgFilename), 

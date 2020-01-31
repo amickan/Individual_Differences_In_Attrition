@@ -70,3 +70,14 @@ corrdetail <- round(cor(corrmat, use = "complete.obs"), 1)
 ggcorrplot(corrdetail, method = "circle") +
   theme(axis.text.x = element_text(size= 5),
         axis.text.y = element_text(size= 5))
+
+## correlate only the motivation scores with one another 
+## subset data frame to only motivation test scores
+setwd("//cnas.ru.nl/wrkgrp/STD-OnlineStudy_DataCoding")
+df <- read.delim("T1_T2_T3_lime_clean.txt", sep = "\t")
+dfmot <- df[,c(130:134, 136:140)]
+corrdetail <- round(cor(dfmot, use = "complete.obs"), 1)
+ggcorrplot(corrdetail, method = "circle") +
+  theme(axis.text.x = element_text(size= 10),
+        axis.text.y = element_text(size= 10))
+

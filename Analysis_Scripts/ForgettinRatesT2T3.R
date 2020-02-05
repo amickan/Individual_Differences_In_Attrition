@@ -126,7 +126,7 @@ for (i in 1:nrow(T3sub)){
 Mcombined$errorfine <- Mcombined$error
 T2sub$errorfine <- T2sub$error
 T3sub$errorfine <- T3sub$error
-dichotomous = TRUE
+dichotomous = FALSE
 if (dichotomous == T){
   Mcombined$error <- Mcombined$errorbin
   T2sub$error <- T2sub$errorbin
@@ -145,8 +145,8 @@ if (dichotomous == T){
 #### Plot forgetting rates ####
 aggregated <- ddply(Mcombined, .(session, ppn), 
                              plyr::summarise,
-                             mean = mean(error),
-                             sem = sd(error)/sqrt(length(error)))
+                             mean = mean(Ratio),
+                             sem = sd(Ratio)/sqrt(length(Ratio)))
 
 
 aggregatedmean <- ddply(aggregated, .(session), 
@@ -172,19 +172,19 @@ combined$session <- as.factor(combined$session)
 lineplot <- ggplot(combined, aes(y = mean, x = session, group = ppn, fill = sign))
 lineplot + geom_point(aes(color = sign), show.legend = FALSE) +
   geom_line(aes(color = sign)) +
-  scale_color_manual(name = "direction", values = c("darkblue", "lightblue"))+
+  scale_color_manual(name = "direction", values = c("lightblue", "darkblue"))+
   geom_point(aes(y = condition_mean), color = "red", show.legend = FALSE) + 
   geom_line(aes(y = condition_mean), color = "red", size = 1, show.legend = FALSE) + 
   geom_errorbar(aes(ymin=condition_mean-condition_sem,
                     ymax=condition_mean+condition_sem),
-                    width = 0.5, color = "red", size = 0.5, show.legend = FALSE) +
-  geom_text(aes(label=ppn), size = 3, nudge_x = c(0.1), show.legend = FALSE) +
+                    width = 0.3, color = "red", size = 1, show.legend = FALSE) +
+  #geom_text(aes(label=ppn), size = 3, nudge_x = c(0.1), show.legend = FALSE) +
   theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20)) + 
   scale_x_discrete(name = "Session", breaks = c(2,3),labels=c("T2", "T3"), expand = c(0.1,0.1)) +
-  ylab("Error rates") +
+  ylab("% correct in Spanish productions") +
   theme_bw()
 
-## plot absolute error rates per person by color, no grand mean on top
+A## plot absolute error rates per person by color, no grand mean on top
 lineplot <- ggplot(combined, aes(y = mean, x = session, group = ppn))
 lineplot + geom_point(aes(color = ppn)) +
   geom_line(aes(color = ppn)) +

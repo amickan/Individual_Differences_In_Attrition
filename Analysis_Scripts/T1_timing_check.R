@@ -15,40 +15,47 @@ leavedf$V3 <- as.numeric(as.character(leavedf$V3))
 leavedf[,4] <- T1lime$ZugangsschlÃ.ssel
 
 #subset this dataframe to only the people that are coded 
-library(readxl)
-setwd("//cnas.ru.nl/wrkgrp/STD-OnlineStudy_DataCoding")
-T3 <- read_excel("T3_PicNaming_DataCoded_new.xlsx", guess_max = 1048576)
-T2 <- read_excel("T2_PicNaming_DataCoded.xlsx", guess_max = 1048576)
+ppn <- read.delim("PPN_final.txt", header = F)
 
-### clean data ####
-# subset to coded people 
-T3[T3=='NA'] <- NA
-T2[T2=='NA'] <- NA
-T3[is.na(T3$error) == 0,]-> T3sub
-T2[is.na(T2$error) == 0,]-> T2sub
+leavedf <- leavedf[leavedf$V4 %in% ppn$V1,]
+colnames(leavedf) <- c("MovedToSpain", "T1date", "TimingT1", "ppn")
 
-# exlcude people who have less than 144 trials 
-T3sub$ppn <- as.factor(T3sub$ppn)
-T2sub$ppn <- as.factor(T2sub$ppn)
+# check how many people did T1 on time
+hist(leavedf$V3)
+length(leavedf[which(leavedf$V3>14),3])
 
-nums <- which(table(T2sub$ppn) < 144)
-nums <- names(nums)
-if (length(nums) > 0){
-  T2sub <- T2sub[-which(T2sub$ppn == nums),]
-}
-nums <- which(table(T3sub$ppn) < 144)
-nums <- names(nums)
-if (length(nums) > 0){
-  T3sub <- T3sub[-which(T3sub$ppn == nums),]
+
+### T2 timing 
+T2lime <- read.csv("//cnas.ru.nl/wrkgrp/STD-OnlineStudy_DataCoding/T2_results_new.csv", stringsAsFactors = F)
+T2lime <- T2lime[which(T2lime$Datum.Abgeschickt!=""),]
+leavedf$T2date <- NA
+leavedf$LeaveSpain <- NA
+leavedf$T2timing <- NA
+for (i in 1:nrow(leavedf)){
+  num <- which(T2lime$ZugangsschlÃ.ssel == leavedf$ppn[i])
+  leavedf$T2date[i] <- T2lime$Datum.Abgeschickt[num]
+  leavedf$LeaveSpain[i] <- T2lime$Wann.genau.hast.du.Spanien.endgÃ.ltig.verlassen..bzw..wirst.du.Spanien..verlassen.[num]
+  leavedf$T2timing[i] <- as.Date(leavedf$T2date[i])-as.Date(leavedf$LeaveSpain[i])
 }
 
-# subset to people who have been coded for both sessions
-T2sub <- T2sub[T2sub$ppn %in% T3sub$ppn,]
-T2sub$ppn <- droplevels(T2sub$ppn)
-T3sub <- T3sub[T3sub$ppn %in% T2sub$ppn,]
-T3sub$ppn <- droplevels(T3sub$ppn)
+# how many people did T2 before Christmas? 
+nrow(leavedf[which(leavedf$T2date < as.Date("2018-12-24")),])
+# how many did T2 within their last two weeks in Spain 
+subset <- leavedf[-which(leavedf$T2date < as.Date("2018-12-24")),]
+nrow(subset[subset$T2timing > 0,])
 
-leavedf <- leavedf[leavedf$V4 %in% T3sub$ppn,]
+leavedf$differenceT1T2 <- NA
+leavedf$differenceT1T2 <- as.Date(leavedf$T2date)-as.Date(leavedf$T1date)
+sd(leavedf$differenceT1T2)
 
-#check how many people did T1 on time
-length(leavedf[which(leavedf$V3>7),3])
+### T3 timing 
+T3lime <- read.csv("//cnas.ru.nl/wrkgrp/STD-OnlineStudy_DataCoding/T3_results_new.csv", stringsAsFactors = F)
+T3lime$Datum.Abgeschic...[146] <- T3lime$Datum.letzte.Ak...[146]
+T3lime <- T3lime[which(T3lime$Datum.Abgeschic...!=""),]
+leavedf$T3date <- NA
+leavedf$T3timing <- NA
+for (i in 1:nrow(leavedf)){
+  num <- which(T3lime$ZugangsschlÃ.ss... == leavedf$ppn[i])
+  leavedf$T3date[i] <- T3lime$Datum.Abgeschic...[num]
+  leavedf$T3timing[i] <- as.Date(leavedf$T3date[i])-as.Date(leavedf$T2date[i])
+}

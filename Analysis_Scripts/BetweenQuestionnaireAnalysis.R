@@ -7,7 +7,7 @@ require(here)
 require(ggplot2)
 
 setwd("U:/PhD/EXPERIMENT 4/DATA/InBetweenQuestionnaire")
-res <- read.csv("results-survey775398_4.csv", stringsAsFactors = F)
+res <- read.csv("results-survey775398_5.csv", stringsAsFactors = F)
 
 # convert to date format and rename
 res$Date <- as.Date(res$Datum.Abgeschickt)
@@ -236,6 +236,37 @@ ggplot() +
   facet_wrap(~Token) + 
   labs(title = "Frequency of Use in %", x = "Time", y = "Frequency of Use (0 - 100 %)")
 
+res$Month <- format(res$Date,format="%y-%m")
+
+aggregatedSpan <- ddply(res, .(Month), 
+                    plyr::summarise,
+                    mean = mean(Spanish),
+                    sem = sd(Spanish)/sqrt(length(Spanish)))
+
+aggregatedEng <- ddply(res, .(Month), 
+                        plyr::summarise,
+                        mean = mean(English),
+                        sem = sd(English)/sqrt(length(English)))
+
+aggregatedGer <- ddply(res, .(Month), 
+                        plyr::summarise,
+                        mean = mean(German),
+                        sem = sd(German)/sqrt(length(German)))
+
+combined <- rbind(aggregatedSpan, aggregatedEng, aggregatedGer)
+
+combined$Language <- rep(c("Spanish", "English", "German"), each = nrow(aggregatedEng))
+combined <- combined[-c(15,16,31,32,47,48),]
+combined$Language <- as.factor(combined$Language)
+
+ggplot(data = combined, aes(x = Month, y = mean, color = Language)) +
+ # geom_point() +
+  geom_ribbon(aes(ymin=mean-sem, ymax=mean+sem, group = Language), fill = "lightgrey", colour = NA) + 
+  geom_line(aes(group = Language), size = 1) +
+  #geom_line(data = combined, aes(x = Month, y = mean, color = Language)) +
+  labs(x = "Time of the year", y = "Frequency of Use (0 - 100 %)") +
+  theme_bw()
+
 # on average?
 # first leave only those values in per person after T2 (and after actual leaving date?)
 # average over 1st month after T2, 2nd, 3rd, 4th, 5th, T3 # here we will sometimes have missing values, so be it 
@@ -282,7 +313,7 @@ individualdiff$T2_T3_English <- NA
 individualdiff$T2_T3_German <- NA
 
 for (i in 1:nrow(individualdiff)){
-  num <- which(frequencystats$PP == individualdiff$Ppn[i])
+  num <- which(frequencystats$PP == individualdiff$ppn[i])
   if (length(num)==1){
     individualdiff$T1_T2_Spanish[i] <- frequencystats$T1_T2_Spanish[num]
     individualdiff$T1_T2_English[i] <- frequencystats$T1_T2_English[num]
@@ -297,7 +328,7 @@ for (i in 1:nrow(individualdiff)){
     individualdiff$T2_T3_Spanish[i] <- NA
     individualdiff$T2_T3_English[i] <- NA
     individualdiff$T2_T3_German[i] <- NA
-    print(individualdiff$Ppn[i])
+    print(individualdiff$ppn[i])
   }
 }
 write.table(individualdiff, "T1_T2_T3_lime_clean.txt", sep = "\t", quote = F, row.names = F)

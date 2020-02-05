@@ -252,10 +252,10 @@ lineplot + geom_point(color = "darkgrey") +
   geom_errorbar(aes(ymin=condition_mean-condition_sem,
                     ymax=condition_mean+condition_sem),
                 width = 0.5, color = "red", size = 1) +
-  geom_text(data = combinedfull[combinedfull$session==3,], aes(label=ppn), size = 3, nudge_x = c(0.2)) +
+  #geom_text(data = combinedfull[combinedfull$session==3,], aes(label=ppn), size = 3, nudge_x = c(0.2)) +
   theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20)) + 
-  scale_x_discrete(name = "Session", breaks = c(1,2,3),labels=c("T1","T2", "T3"), expand = c(0.1,0.1)) +
-  ylab("Error rates") +
+  scale_x_continuous(name = "Session", breaks = c(1,2,3),labels=c("T1","T2", "T3"), expand = c(0.1,0.1)) +
+  ylab("% correct in Spanish") +
   #scale_color_manual(guide=F, "Language Condition", values=c("dodgerblue4","firebrick"),labels=c("Dutch","English")) +
   theme_bw()
 

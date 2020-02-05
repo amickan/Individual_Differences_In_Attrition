@@ -263,13 +263,17 @@ df                       <- merge(df, freq2, by = "img")
 
 # add T2 Spanish performance score
 T2perf <- as.data.frame(tapply(T2sub$error, T2sub$ppn, mean))
-for (i in 1:length(unique(df$ppn))){
-  pnum <- unique(df$ppn)[i]
-  num <- which(rownames(T2perf)==pnum)
-  for (k in 1:nrow(df[df$ppn == pnum,])){
-    df[df$ppn == pnum,]$T2perf[k] <- T2perf[num,1]}
-}
-df$T2perf <- (1-df$T2perf)*100 # turning into percentage correct (rather than error rates)
+T2perf$ppn <- rownames(T2perf)
+colnames(T2perf) <- c("score", "ppn")
+# for (i in 1:length(unique(df$ppn))){
+#   pnum <- unique(df$ppn)[i]
+#   num <- which(rownames(T2perf)==pnum)
+#   for (k in 1:nrow(df[df$ppn == pnum,])){
+#     df[df$ppn == pnum,]$T2perf[k] <- T2perf[num,1]}
+#   print(pnum)
+# }
+df <- merge(df, T2perf)
+df$score <- (1-df$score)*100 # turning into percentage correct (rather than error rates)
   
 ##### Testing each predictor seperately for inclusion in the final model #######
 # Base model with only session as predictor 
@@ -294,25 +298,26 @@ modelGermanEngl <- glmer(cbind(Corr, Incorr) ~ session*scale(GermanEngRatio_T2_T
                          data = df)
 summary(modelGermanEngl)
 anova(modelsess, modelGermanEngl) # --> Ratio of German to English does not improve model fit
+#anova(modelSpanishFreq, modelGermanEngl)
 
 # English frequency of use 
-modelEnglFreq <- glmer(cbind(Corr, Incorr) ~ session*scale(T2_T3_English) + (1|ppn) + (1|imgFilename), 
-                       family = binomial, 
-                       control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), 
-                       data = df)
-summary(modelEnglFreq)
-anova(modelsess, modelEnglFreq) # --> English frequency of use does improve model fit. :-) 
+#modelEnglFreq <- glmer(cbind(Corr, Incorr) ~ session*scale(T2_T3_English) + (1|ppn) + (1|imgFilename), 
+#                       family = binomial, 
+#                       control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), 
+#                       data = df)
+#summary(modelEnglFreq)
+#anova(modelsess, modelEnglFreq) # --> English frequency of use does improve model fit. :-) 
 
 # German frequency of use 
-modelGerFreq <- glmer(cbind(Corr, Incorr) ~ session*scale(T2_T3_German) + (1|ppn) + (1|imgFilename), 
-                      family = binomial, 
-                      control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), 
-                      data = df)
-summary(modelGerFreq)
-anova(modelsess, modelGerFreq) # --> German frequency of use improves model fit. :-)
+#modelGerFreq <- glmer(cbind(Corr, Incorr) ~ session*scale(T2_T3_German) + (1|ppn) + (1|imgFilename), 
+#                      family = binomial, 
+#                      control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), 
+#                      data = df)
+#summary(modelGerFreq)
+#anova(modelsess, modelGerFreq) # --> German frequency of use improves model fit. :-)
 
 # because both German and English frequency improve model fit, but only can enter, compare the two models directly and take the better one
-anova(modelEnglFreq, modelGerFreq) # --> the model with German frequency of use has the better model fit 
+#anova(modelEnglFreq, modelGerFreq) # --> the model with German frequency of use has the better model fit 
 
 # Integrative Motivation and attitude to maintain Spanish when back in Germany
 modelMotivation <- glmer(cbind(Corr, Incorr) ~ session*scale(IntegMot_T2_T3_avg) + (1|ppn) + (1|imgFilename), 
@@ -320,7 +325,7 @@ modelMotivation <- glmer(cbind(Corr, Incorr) ~ session*scale(IntegMot_T2_T3_avg)
                          control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), 
                          data = df)
 summary(modelMotivation)
-anova(modelsess, modelMotivation) ### Motivation improves model fit :-)
+anova(modelsess, modelMotivation) ### Integrative motivation improves model fit :-)
 
 # Anxiety to speak Spanish when back in Germany
 modelMotivationAnxiety <- glmer(cbind(Corr, Incorr) ~ session*scale(Mot_T2_T3_anxiety_avg) + (1|ppn) + (1|imgFilename), 
@@ -356,6 +361,9 @@ anova(modelsess, modelImmersion) ### Immersion improves model fit :-)
 
 # Because Motivation and Immersion correlate highly with one another, check which model has the better fit 
 anova(modelImmersion, modelMotivation) # --> Motivation has the better fit
+anova(modelMotivation, modelMotivationAnxiety)
+anova(modelMotivation, modelMotivationInst)
+anova(modelMotivationAnxiety, modelMotivationInst)
 
 # Spanish AoA
 modelSpanishAoA <- glmer(cbind(Corr, Incorr) ~ session*scale(SpanishAoA) + (1|ppn) + (1|imgFilename), 
@@ -390,7 +398,7 @@ summary(modelcognate)
 anova(modelsess, modelcognate) ### cognate status improves model fit :-) 
 
 # T2 performance
-modelT2perf <- glmer(cbind(Corr, Incorr) ~ session*scale(T2perf) + (1|ppn) + (1|imgFilename), 
+modelT2perf <- glmer(cbind(Corr, Incorr) ~ session*scale(score) + (1|ppn) + (1|imgFilename), 
                       family = binomial, 
                       control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), 
                       data = df)
@@ -402,9 +410,10 @@ anova(modelsess, modelT2perf) ### T2 performance improves model fit :-)
 modelfull <- glmer(cbind(Corr, Incorr)  ~ 
                      session*scale(T2_T3_Spanish) +
                      session*scale(SRP_Spanish_T2_T3) +
-                     session*scale(Mot_T2_T3_avg) +
-                     session*scale(Mot_T2_T3_anxiety_avg) +
-                     session*scale(T2perf) +
+                     #session*scale(IntegMot_T2_T3_avg) +
+                     #session*scale(Mot_T2_T3_anxiety_avg) +
+                     session*scale(Mot_T2_T3_instr_avg) +
+                     session*scale(score) +
                      session*scale(SubLog) +
                      session*CogN +
                      (1|ppn) + (1|imgFilename), 
@@ -761,201 +770,209 @@ ggplot(accuracy_mean_pp_m, aes(x=session, y=condition_mean, color = error_T1)) +
 
 
 ##### Does T2 performance predict T3 performance? ####
-# duh yes it does 
 
-# setwd("//cnas.ru.nl/wrkgrp/STD-OnlineStudy_DataCoding")
-# T3 <- read_excel("T3_PicNaming_DataCoded_new.xlsx", guess_max = 1048576)
-# T2 <- read_excel("T2_PicNaming_DataCoded.xlsx", guess_max = 1048576)
-# 
-# ppn <- read.delim("PPN_final.txt", header = F)
-# 
-# ### clean data ####
-# # subset to coded people 
-# T3[T3=='NA'] <- NA
-# T2[T2=='NA'] <- NA
-# T3[is.na(T3$error) == 0,]-> T3sub
-# T2[is.na(T2$error) == 0,]-> T2sub
-# 
-# ## exlcude people who have less than 144 trials 
-# nums <- which(table(T2sub$ppn) < 144)
-# nums <- names(nums)
-# if (length(nums) > 0){
-#   for (i in 1:length(nums)){
-#     T2sub <- T2sub[-which(T2sub$ppn == nums[i]),]}
-# }
-# nums <- which(table(T3sub$ppn) < 144)
-# nums <- names(nums)
-# if (length(nums) > 0){
-#   T3sub <- T3sub[-which(T3sub$ppn == nums),]
-# }
-# 
-# T3sub$ppn <- as.factor(T3sub$ppn)
-# T2sub$ppn <- as.factor(T2sub$ppn)
-# 
-# # subset to people who are included in analysis
-# T2sub <- T2sub[T2sub$ppn %in% ppn$V1,]
-# T2sub$ppn <- droplevels(T2sub$ppn)
-# T3sub <- T3sub[T3sub$ppn %in% ppn$V1,]
-# T3sub$ppn <- droplevels(T3sub$ppn)
-# 
-# # exlcude people that typed on too many trials
-# counts <- as.data.frame(table(T2sub$typing, T2sub$ppn))
-# counts[,4] <- as.data.frame(table(T3sub$typing, T3sub$ppn))[3]
-# pnex <- counts[which(counts$Freq > 30 | counts$Freq.1 > 30),]$Var2
-# 
-# for (i in 1:length(pnex)){
-#   T2sub <- T2sub[-which(T2sub$ppn==pnex[i]),]
-#   T3sub <- T3sub[-which(T3sub$ppn==pnex[i]),]
-# }
-# T2sub$ppn <- droplevels(T2sub$ppn)
-# T3sub$ppn <- droplevels(T3sub$ppn)
-# 
-# # set numeric 
-# T3sub$error <- as.numeric(T3sub$error)
-# T3sub$phoncorr <- as.numeric(T3sub$phoncorr)
-# T3sub$phonincorr <- as.numeric(T3sub$phonincorr)
-# T2sub$error <- as.numeric(T2sub$error)
-# T2sub$phoncorr <- as.numeric(T2sub$phoncorr)
-# T2sub$phonincorr <- as.numeric(T2sub$phonincorr)
-# 
-# # calculate the ratio of correct for all partially correct trials
-# for (i in 1:nrow(T3sub)){
-#   if (is.na(T3sub$error[i]) == 0 && T3sub$error[i] == 999){
-#     T3sub$error[i] <- T3sub$phonincorr[i]/(T3sub$phonincorr[i]+T3sub$phoncorr[i])
-#   }
-# }
-# 
-# for (i in 1:nrow(T2sub)){
-#   if (is.na(T2sub$error[i]) == 0 && T2sub$error[i] == 999){
-#     T2sub$error[i] <- T2sub$phonincorr[i]/(T2sub$phonincorr[i]+T2sub$phoncorr[i])
-#   }
-# }
-# 
-# # based on items plots below, exclude ambiguous items 
-# ambitems <- c("envelope.png", "pearl.png", "screen.png")
-# for (i in 1:length(ambitems)){
-#   T2sub <- T2sub[-which(T2sub$imgFilename == ambitems[i]),]
-# }
-# for (i in 1:length(ambitems)){
-#   T3sub <- T3sub[-which(T3sub$imgFilename == ambitems[i]),]
-# }
-# #T3sub$imgFilename <- droplevels(T3sub$imgFilename)
-# #T2sub$imgFilename <- droplevels(T2sub$imgFilename)
-# 
-# # delete practice trials 
-# T2sub <- T2sub[T2sub$imgIndex > 3,] #excluding the first 4 items, trial index starts at 0
-# T3sub <- T3sub[T3sub$imgIndex > 3,]
-# 
-# # merge datafrmaes
-# T2sub$img <- gsub(".png", "", T2sub$imgFilename)
-# T3sub$img <- gsub(".png", "", T3sub$imgFilename)
-# T2sub2 <- dplyr::select(T2sub, ppn, img, error)
-# T3sub2 <- merge(T3sub, T2sub2, by = c("ppn", "img"))
-# colnames(T3sub2)[ncol(T3sub2)] <- "error_T2"
-# 
-# # same analysis with fine-grained error rates
-# setwd("//ru.nl/wrkgrp/STD-OnlineStudy_DataCoding")
-# lenwords <- read.delim("FullListWords_SpanishNaming.txt")
-# 
-# # adjust existing phoneme correct and incorrect counts 
-# T3sub2$OrigLen <- NA
-# T3sub2$img <- gsub(".png", "", T3sub2$imgFilename)
-# 
-# for (j in 1:nrow(T3sub2)) {
-#   pos <- which(tolower(as.character(lenwords$English)) == tolower(as.character(T3sub2$img[j])))
-#   T3sub2$OrigLen[j] <- lenwords$TotalPhon[pos]
-#   
-#   if (is.na(lenwords$AltPhon[pos])==1) {}
-#   else if (is.na(lenwords$AltPhon[pos])==0 && is.na(T3sub2$response[j])==0) {
-#     if (grepl("man", T3sub2$response[j]) && T3sub2$imgFilename[j] == "peanut.png") {
-#       # cacahuete synonym
-#       T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
-#       T3sub2$imgFilename[j] <- "mani"
-#     } else if (grepl("pil", T3sub2$response[j]) && T3sub2$imgFilename[j] == "battery.png") {
-#       # batteria synonym
-#       T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
-#       T3sub2$imgFilename[j] <- "pila"
-#     } else if (grepl("are", T3sub2$response[j]) && T3sub2$imgFilename[j] == "earring.png") {
-#       # pendientes synonym
-#       T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
-#       T3sub2$imgFilename[j] <- "aretes"
-#     } else if (grepl("^aro", T3sub2$response[j]) && T3sub2$imgFilename[j] != "ring.png") {
-#       # anillo synonym
-#       T3sub2$OrigLen[j] <- lenwords$X[pos]
-#       T3sub2$imgFilename[j] <- "aro"
-#     } else if (grepl("co", T3sub2$response[j]) && T3sub2$imgFilename[j] == "pillow.png") {
-#       # almohada synonym
-#       T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
-#       T3sub2$imgFilename[j] <- "cojin"
-#     } else if (grepl("ana", T3sub2$response[j]) && T3sub2$imgFilename[j] == "pineapple.png") {
-#       # pinya synonym
-#       T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
-#       T3sub2$imgFilename[j] <- "ananas"
-#     } else if (grepl("cob", T3sub2$response[j]) && T3sub2$imgFilename[j] == "blanket.png") {
-#       # manta synonym
-#       T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
-#       T3sub2$imgFilename[j] <- "cobija"
-#     } else if (grepl("cit", T3sub2$response[j]) && T3sub2$imgFilename[j] == "lemon.png") {
-#       # limon synonym
-#       T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
-#       T3sub2$imgFilename[j] <- "citron"
-#     } else if (grepl("ori", T3sub2$response[j]) && T3sub2$imgFilename[j] == "sausage.png") {
-#       # salchicha synonym
-#       T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
-#       T3sub2$imgFilename[j] <- "chorizo"
-#     } else if (grepl("bomb", T3sub2$response[j]) && T3sub2$imgFilename[j] == "straw.png") {
-#       # paja synonym
-#       T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
-#       T3sub2$imgFilename[j] <- "bombilla"
-#     } else if (grepl("ca", T3sub2$response[j]) && T3sub2$imgFilename[j] == "candle.png") {
-#       # vela synonym
-#       T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
-#       T3sub2$imgFilename[j] <- "candela"
-#     } else if (grepl("cer", T3sub2$response[j]) && T3sub2$imgFilename[j] == "chain.png") {
-#       # cadena synonym
-#       T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
-#       T3sub2$imgFilename[j] <- "cerradura"
-#     } else if (grepl("stam", T3sub2$response[j]) && T3sub2$imgFilename[j] == "stamp.png") {
-#       # sello synonym
-#       T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
-#       T3sub2$imgFilename[j] <- "estampilla"
-#     } else if (grepl("zap", T3sub2$response[j]) && T3sub2$imgFilename[j] == "pumpkin.png") {
-#       # calabaza synonym
-#       T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
-#       T3sub2$imgFilename[j] <- "zapallo"
-#     }
-#   } 
-#   
-#   rm(pos)
-# }
-# 
-# for (j in 1:nrow(T3sub2)) {
-#   if (T3sub2$error.x[j]==0){
-#     T3sub2$Corr[j] <- T3sub2$OrigLen[j]
-#     T3sub2$Incorr[j] <- 0
-#     T3sub2$phoncorr[j]  <- T3sub2$OrigLen[j]
-#     T3sub2$phonincorr[j]  <- 0
-#   } else if (T3sub2$error.x[j]==1){
-#     T3sub2$Corr[j] <- 0
-#     T3sub2$Incorr[j] <- T3sub2$OrigLen[j]
-#     T3sub2$phoncorr[j]  <- 0
-#     T3sub2$phonincorr[j]  <- T3sub2$OrigLen[j]
-#   }
-# }
-# 
-# T3sub2$Total <- T3sub2$phoncorr + T3sub2$phonincorr
-# T3sub2$CorrPer <- T3sub2$phoncorr/T3sub2$Total
-# T3sub2$Corr <- round(T3sub2$CorrPer*T3sub2$OrigLen,0)
-# T3sub2$Incorr <- T3sub2$OrigLen-T3sub2$Corr
-# T3sub2$Ratio <- (T3sub2$Corr/T3sub2$OrigLen)*100
-# 
-# 
-# 
-# modelerror2 <- glmer(cbind(Corr, Incorr) ~ error_T2 + (1|ppn) + (1|img), 
-#                      family = binomial, 
-#                      control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), 
-#                      data = T3sub2)
-# summary(modelerror2)
-# 
-# e <- effect("error_T2",modelerror2)
-# plot(e, type='response')
+# merge datafrmaes
+T2sub$img <- gsub(".png", "", T2sub$imgFilename)
+T3sub$img <- gsub(".png", "", T3sub$imgFilename)
+T2sub2 <- dplyr::select(T2sub, ppn, img, error)
+T3sub2 <- merge(T3sub, T2sub2, by = c("ppn", "img"))
+colnames(T3sub2)[ncol(T3sub2)] <- "error_T2"
+
+# same analysis with fine-grained error rates
+setwd("//ru.nl/wrkgrp/STD-OnlineStudy_DataCoding")
+lenwords <- read.delim("FullListWords_SpanishNaming.txt")
+
+# adjust existing phoneme correct and incorrect counts
+T3sub2$OrigLen <- NA
+T3sub2$img <- gsub(".png", "", T3sub2$imgFilename)
+
+for (j in 1:nrow(T3sub2)) {
+  pos <- which(tolower(as.character(lenwords$English)) == tolower(as.character(T3sub2$img[j])))
+  T3sub2$OrigLen[j] <- lenwords$TotalPhon[pos]
+
+  if (is.na(lenwords$AltPhon[pos])==1) {}
+  else if (is.na(lenwords$AltPhon[pos])==0 && is.na(T3sub2$response[j])==0) {
+    if (grepl("man", T3sub2$response[j]) && T3sub2$imgFilename[j] == "peanut.png") {
+      # cacahuete synonym
+      T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
+      T3sub2$imgFilename[j] <- "mani"
+    } else if (grepl("pil", T3sub2$response[j]) && T3sub2$imgFilename[j] == "battery.png") {
+      # batteria synonym
+      T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
+      T3sub2$imgFilename[j] <- "pila"
+    } else if (grepl("are", T3sub2$response[j]) && T3sub2$imgFilename[j] == "earring.png") {
+      # pendientes synonym
+      T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
+      T3sub2$imgFilename[j] <- "aretes"
+    } else if (grepl("^aro", T3sub2$response[j]) && T3sub2$imgFilename[j] != "ring.png") {
+      # anillo synonym
+      T3sub2$OrigLen[j] <- lenwords$X[pos]
+      T3sub2$imgFilename[j] <- "aro"
+    } else if (grepl("co", T3sub2$response[j]) && T3sub2$imgFilename[j] == "pillow.png") {
+      # almohada synonym
+      T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
+      T3sub2$imgFilename[j] <- "cojin"
+    } else if (grepl("ana", T3sub2$response[j]) && T3sub2$imgFilename[j] == "pineapple.png") {
+      # pinya synonym
+      T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
+      T3sub2$imgFilename[j] <- "ananas"
+    } else if (grepl("cob", T3sub2$response[j]) && T3sub2$imgFilename[j] == "blanket.png") {
+      # manta synonym
+      T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
+      T3sub2$imgFilename[j] <- "cobija"
+    } else if (grepl("cit", T3sub2$response[j]) && T3sub2$imgFilename[j] == "lemon.png") {
+      # limon synonym
+      T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
+      T3sub2$imgFilename[j] <- "citron"
+    } else if (grepl("ori", T3sub2$response[j]) && T3sub2$imgFilename[j] == "sausage.png") {
+      # salchicha synonym
+      T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
+      T3sub2$imgFilename[j] <- "chorizo"
+    } else if (grepl("bomb", T3sub2$response[j]) && T3sub2$imgFilename[j] == "straw.png") {
+      # paja synonym
+      T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
+      T3sub2$imgFilename[j] <- "bombilla"
+    } else if (grepl("ca", T3sub2$response[j]) && T3sub2$imgFilename[j] == "candle.png") {
+      # vela synonym
+      T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
+      T3sub2$imgFilename[j] <- "candela"
+    } else if (grepl("cer", T3sub2$response[j]) && T3sub2$imgFilename[j] == "chain.png") {
+      # cadena synonym
+      T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
+      T3sub2$imgFilename[j] <- "cerradura"
+    } else if (grepl("stam", T3sub2$response[j]) && T3sub2$imgFilename[j] == "stamp.png") {
+      # sello synonym
+      T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
+      T3sub2$imgFilename[j] <- "estampilla"
+    } else if (grepl("zap", T3sub2$response[j]) && T3sub2$imgFilename[j] == "pumpkin.png") {
+      # calabaza synonym
+      T3sub2$OrigLen[j] <- lenwords$AltPhon[pos]
+      T3sub2$imgFilename[j] <- "zapallo"
+    }
+  }
+
+  rm(pos)
+}
+
+for (j in 1:nrow(T3sub2)) {
+  if (T3sub2$error.x[j]==0){
+    T3sub2$Corr[j] <- T3sub2$OrigLen[j]
+    T3sub2$Incorr[j] <- 0
+    T3sub2$phoncorr[j]  <- T3sub2$OrigLen[j]
+    T3sub2$phonincorr[j]  <- 0
+  } else if (T3sub2$error.x[j]==1){
+    T3sub2$Corr[j] <- 0
+    T3sub2$Incorr[j] <- T3sub2$OrigLen[j]
+    T3sub2$phoncorr[j]  <- 0
+    T3sub2$phonincorr[j]  <- T3sub2$OrigLen[j]
+  }
+}
+
+T3sub2$Total <- T3sub2$phoncorr + T3sub2$phonincorr
+T3sub2$CorrPer <- T3sub2$phoncorr/T3sub2$Total
+T3sub2$Corr <- round(T3sub2$CorrPer*T3sub2$OrigLen,0)
+T3sub2$Incorr <- T3sub2$OrigLen-T3sub2$Corr
+T3sub2$Ratio <- (T3sub2$Corr/T3sub2$OrigLen)*100
+
+
+# add T2 average performance to the model 
+T2perf <- as.data.frame(tapply(T2sub$error, T2sub$ppn, mean))
+T3sub2$T2perf <- NA
+for (i in 1:length(unique(T3sub2$ppn))){
+  pnum <- unique(T3sub2$ppn)[i]
+  num <- which(rownames(T2perf)==pnum)
+  for (k in 1:nrow(T3sub2[T3sub2$ppn == pnum,])){
+    T3sub2[T3sub2$ppn == pnum,]$T2perf[k] <- T2perf[num,1]}
+}
+T3sub2$T2perf <- (1-T3sub2$T2perf)*100 # turning into percentage correct (rather than error rates)
+
+T3sub2$error_T2bin <- T3sub2$error_T2
+T3sub2[T3sub2$error_T2>0,]$error_T2bin <- 1
+T3sub2$error_T2bin <- as.factor(T3sub2$error_T2bin)
+T3sub2$error_T2bin <- relevel(T3sub2$error_T2bin, ref = "1")
+contrasts(T3sub2$error_T2bin) <- contr.treatment(2) # baseline is "unknown at T2"
+
+modelerror2 <- glmer(cbind(Corr, Incorr) ~ error_T2bin*scale(T2perf) + (1|ppn) + (1|img),
+                     family = binomial,
+                     control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)),
+                     data = T3sub2)
+summary(modelerror2)
+
+e <- allEffects(modelerror2)
+#e <- predictorEffect("T2perf", modelerror2)
+plot(e, type='response', lines=list(multiline=TRUE), confint=list(style="auto"))
+
+### analysis aggreagted over items 
+# calculate T2 and T3 average performance per person 
+T3perf <- as.data.frame(tapply(T3sub$error, T3sub$ppn, mean))
+T3perf$ppn <- rownames(T3perf)
+T2perf$ppn <- rownames(T2perf)
+Combined <- merge(T2perf, T3perf)
+Combined$Difference <- Combined$`tapply(T3sub$error, T3sub$ppn, mean)`-Combined$`tapply(T2sub$error, T2sub$ppn, mean)`
+# positive difference means people forgot
+Combined$DiffPerc <- Combined$Difference/Combined$T2perf
+colnames(Combined) <- c("ppn", "T2perf", "T3perf", "Difference", "DiffPerc")
+
+
+modeldiff <- lmer(DiffPerc~T2perf, data = Combined)
+summary(modeldiff)
+e <- allEffects(modeldiff)
+plot(e)
+
+
+#### running a linear model on the slope (=average change from T2 to T3)
+T3perf <- as.data.frame(tapply(T3sub$error, T3sub$ppn, mean))
+T2perf <- as.data.frame(tapply(T2sub$error, T2sub$ppn, mean))
+T3perf$ppn <- rownames(T3perf)
+T2perf$ppn <- rownames(T2perf)
+Combined <- merge(T2perf, T3perf)
+Combined$Difference <- Combined$`tapply(T3sub$error, T3sub$ppn, mean)`-Combined$`tapply(T2sub$error, T2sub$ppn, mean)`
+# positive difference means people forgot
+Combined$DiffPerc <- Combined$Difference/Combined$`tapply(T2sub$error, T2sub$ppn, mean)`
+colnames(Combined) <- c("ppn", "T2perf", "T3perf", "Difference", "DiffPerc")
+
+Combined <- merge(Combined, individualdiff, by = "ppn")
+
+Combined$GermanEngRatio_T2_T3  <- Combined$T2_T3_English/Combined$T2_T3_German
+Combined$Mot_T2_T3_avg         <- (Combined$Mot_T3_pos_avg+Combined$Mot_T2_pos_avg)/2
+Combined$IntegMot_T2_T3_avg    <- ((Combined$Mot_T2_attitude + Combined$Mot_T2_integrative + Combined$Mot_T2_interest)/3 + (Combined$Mot_T3_attitude + Combined$Mot_T3_integrative+ Combined$Mot_T3_interest)/3)/2
+#df$Mot_T2_T3_diff       <- df$Mot_T3_pos_avg-df$Mot_T2_pos_avg
+Combined$SRP_Spanish_T2_T3     <- Combined$T3_SRP_Spanish_avg - Combined$T2_SRP_Spanish_avg
+Combined$Immersion             <- (Combined$T3_LivingSitGermany_Spanish + Combined$T3_WatchSpanishMovies + Combined$T3_ReadSpanishBooks)/3
+Combined$Mot_T2_T3_anxiety_avg <- (Combined$Mot_T3_anxiety+Combined$Mot_T2_anxiety)/2
+Combined$Mot_T2_T3_instr_avg   <- (Combined$Mot_T3_instrumental+Combined$Mot_T2_instrumental)/2
+
+
+# model comparisons 
+model0 <- lm(DiffPerc ~ 1, data = Combined)
+model1 <- lm(DiffPerc ~ T2_T3_Spanish, data = Combined)
+summary(model)
+anova(model0, model1) # improves model fit 
+
+model2 <- lm(DiffPerc ~ GermanEngRatio_T2_T3, data = Combined)
+anova(model0, model2)
+
+model3 <- lm(DiffPerc ~ IntegMot_T2_T3_avg, data = Combined)
+anova(model0, model3)
+
+model4 <- lm(DiffPerc ~ Mot_T2_T3_anxiety_avg, data = Combined)
+anova(model0, model4)
+
+model5 <- lm(DiffPerc ~ Mot_T2_T3_instr_avg, data = Combined)
+anova(model0, model5) # improves model fit
+
+model6 <- lm(DiffPerc ~ SRP_Spanish_T2_T3, data = Combined)
+anova(model0, model6)
+
+model7 <- lm(DiffPerc ~ Immersion, data = Combined)
+anova(model0, model7)
+
+model8 <- lm(DiffPerc ~ T2perf.x, data = Combined)
+anova(model0, model8)
+
+### full model 
+modelfull <- lm(DiffPerc ~ T2_T3_Spanish + Mot_T2_T3_instr_avg, data = Combined)
+summary(modelfull) # only Spanish frequency of use explaines change from T2 to T3
+
+e <- predictorEffect("T2_T3_Spanish", modelfull)
+plot(e)

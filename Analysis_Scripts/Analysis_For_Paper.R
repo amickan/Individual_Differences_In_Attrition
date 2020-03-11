@@ -231,6 +231,7 @@ contrasts(Mcombined$session) <- c(-0.5, 0.5)
 
 ## what predicts changes in error rate from T2 to T3?
 individualdiff <- read.delim("T1_T2_T3_lime_clean.txt", sep = "\t")
+fluency <- read.delim("Fluency_scores_T2_T3.txt")
 
 ## add predictors to the full dataframe 
 colnames(individualdiff)[1] <- "ppn"
@@ -244,6 +245,8 @@ df$SRP_Spanish_T2_T3     <- df$T3_SRP_Spanish_avg - df$T2_SRP_Spanish_avg
 df$Immersion             <- (df$T3_LivingSitGermany_Spanish + df$T3_WatchSpanishMovies + df$T3_ReadSpanishBooks)/3
 df$Mot_T2_T3_anxiety_avg <- (df$Mot_T3_anxiety+df$Mot_T2_anxiety)/2
 df$Mot_T2_T3_instr_avg   <- (df$Mot_T3_instrumental+df$Mot_T2_instrumental)/2
+colnames(fluency)[1] <- "ppn"
+df                       <- merge(df, fluency, by = "ppn")
 
 # add cognate status to dataframe 
 lenwords                 <- read.delim("FullListWords_SpanishNaming.txt")
@@ -275,6 +278,11 @@ colnames(T2perf) <- c("score", "ppn")
 df <- merge(df, T2perf)
 df$score <- (1-df$score)*100 # turning into percentage correct (rather than error rates)
   
+# run the analyses with the smaller dataset 
+#pp2 <- read.delim("PPN_final_fluency_sub.txt", header = F)
+#df <- df[df$ppn %in% pp2$V1,]
+#df$ppn <- droplevels(df$ppn)
+
 ##### Testing each predictor seperately for inclusion in the final model #######
 # Base model with only session as predictor 
 modelsess <- glmer(cbind(Corr, Incorr) ~ session + (1|ppn) + (1|imgFilename), 
@@ -319,6 +327,41 @@ anova(modelsess, modelGermanEngl) # --> Ratio of German to English does not impr
 # because both German and English frequency improve model fit, but only can enter, compare the two models directly and take the better one
 #anova(modelEnglFreq, modelGerFreq) # --> the model with German frequency of use has the better model fit 
 
+# Fluency German letter
+modelFluGer <- glmer(cbind(Corr, Incorr) ~ session*scale(Diff_T2_T3_letter_German) + (1|ppn) + (1|imgFilename), 
+                         family = binomial, 
+                         control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), 
+                         data = df)
+summary(modelFluGer)
+anova(modelsess, modelFluGer) ## --> model with German letter fluency is better
+
+# Fluency English letter
+modelFluEng <- glmer(cbind(Corr, Incorr) ~ session*scale(Diff_T2_T3_letter_English) + (1|ppn) + (1|imgFilename), 
+                     family = binomial, 
+                     control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), 
+                     data = df)
+summary(modelFluEng)
+anova(modelsess, modelFluEng) ## --> model with English letter fluency is better
+
+# Fluency German category 
+modelFluGerCat <- glmer(cbind(Corr, Incorr) ~ session*scale(Diff_T2_T3_category_German_4) + (1|ppn) + (1|imgFilename), 
+                     family = binomial, 
+                     control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), 
+                     data = df)
+summary(modelFluGerCat)
+anova(modelsess, modelFluGerCat) ## --> model with German category fluency is not better
+
+# Fluency English category (avg)
+modelFluEngCat <- glmer(cbind(Corr, Incorr) ~ session*scale(Diff_T2_T3_category_English_avg) + (1|ppn) + (1|imgFilename), 
+                        family = binomial, 
+                        control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), 
+                        data = df)
+summary(modelFluEngCat)
+anova(modelsess, modelFluEngCat) ## --> model with English category fluency is better
+
+# check which of the two English lfuency scores is the better model improver 
+anova(modelFluEngCat, modelFluEng)
+
 # Integrative Motivation and attitude to maintain Spanish when back in Germany
 modelMotivation <- glmer(cbind(Corr, Incorr) ~ session*scale(IntegMot_T2_T3_avg) + (1|ppn) + (1|imgFilename), 
                          family = binomial, 
@@ -361,9 +404,8 @@ anova(modelsess, modelImmersion) ### Immersion improves model fit :-)
 
 # Because Motivation and Immersion correlate highly with one another, check which model has the better fit 
 anova(modelImmersion, modelMotivation) # --> Motivation has the better fit
-anova(modelMotivation, modelMotivationAnxiety)
-anova(modelMotivation, modelMotivationInst)
-anova(modelMotivationAnxiety, modelMotivationInst)
+anova(modelMotivation, modelMotivationAnxiety) # anxiety is better
+anova(modelMotivationAnxiety, modelMotivationInst) # instrumental motivation is better 
 
 # Spanish AoA
 modelSpanishAoA <- glmer(cbind(Corr, Incorr) ~ session*scale(SpanishAoA) + (1|ppn) + (1|imgFilename), 
@@ -412,8 +454,11 @@ modelfull <- glmer(cbind(Corr, Incorr)  ~
                      session*scale(SRP_Spanish_T2_T3) +
                      #session*scale(IntegMot_T2_T3_avg) +
                      #session*scale(Mot_T2_T3_anxiety_avg) +
+                     session*scale(Diff_T2_T3_category_English_avg)+
+                     session*scale(Diff_T2_T3_letter_English)+
+                     session*scale(Diff_T2_T3_letter_German)+
                      session*scale(Mot_T2_T3_instr_avg) +
-                     session*scale(score) +
+                     #session*scale(score) +
                      session*scale(SubLog) +
                      session*CogN +
                      (1|ppn) + (1|imgFilename), 
@@ -422,6 +467,7 @@ modelfull <- glmer(cbind(Corr, Incorr)  ~
                      #weights = OrigLen,
                      data = df)
 summary(modelfull)
+
 
 #### Plotting  significant interactions from the final model #### 
 
@@ -445,6 +491,55 @@ ggplot(df, aes(x = T2_T3_Spanish, y= Ratio/100, color = session)) +
   binomial_smooth(aes(weight = OrigLen)) +
   geom_point(data = accuracy_mean_pp, aes(y=mean/100)) +
   xlab("Average frequency of use of Spanish in the 6 months post return to Germany (in %)") +
+  ylab("% correct Spanish productions") +
+  scale_color_discrete(name = "Session", labels = c("T2", "T3")) +
+  theme_bw()
+
+# Fluency German letter 
+e11 <- predictorEffect("Diff_T2_T3_letter_German", modelfull)
+plot(e11, lines=list(multiline=TRUE), confint=list(style="auto"), type='response')
+accuracy_mean_pp2 <- ddply(df, .(session, ppn, Diff_T2_T3_letter_German), 
+                          plyr::summarise,
+                          mean = mean(Ratio),
+                          sem = sd(Ratio)/sqrt(length(Ratio)))
+ggplot(df, aes(x = Diff_T2_T3_letter_German, y= Ratio/100, color = session)) + 
+  #geom_smooth(method = "glm",method.args=list(family = "binomial")) +
+  binomial_smooth(aes(weight = OrigLen)) +
+  geom_point(data = accuracy_mean_pp2, aes(y=mean/100)) +
+  xlab("Difference in fluency performance for the German letter fluency tasks (T3-T2)") +
+  ylab("% correct Spanish productions") +
+  scale_color_discrete(name = "Session", labels = c("T2", "T3")) +
+  theme_bw()
+
+
+# Fluency English letter 
+e12 <- predictorEffect("Diff_T2_T3_letter_English", modelfull)
+plot(e12, lines=list(multiline=TRUE), confint=list(style="auto"), type='response')
+accuracy_mean_pp3 <- ddply(df, .(session, ppn, Diff_T2_T3_letter_English), 
+                           plyr::summarise,
+                           mean = mean(Ratio),
+                           sem = sd(Ratio)/sqrt(length(Ratio)))
+ggplot(df, aes(x = Diff_T2_T3_letter_English, y= Ratio/100, color = session)) + 
+  #geom_smooth(method = "glm",method.args=list(family = "binomial")) +
+  binomial_smooth(aes(weight = OrigLen)) +
+  geom_point(data = accuracy_mean_pp3, aes(y=mean/100)) +
+  xlab("Difference in fluency performance for the English letter fluency tasks (T3-T2)") +
+  ylab("% correct Spanish productions") +
+  scale_color_discrete(name = "Session", labels = c("T2", "T3")) +
+  theme_bw()
+
+# Fluency English category 
+e13 <- predictorEffect("Diff_T2_T3_category_English_avg", modelfull)
+plot(e13, lines=list(multiline=TRUE), confint=list(style="auto"), type='response')
+accuracy_mean_pp4 <- ddply(df, .(session, ppn, Diff_T2_T3_category_English_avg), 
+                           plyr::summarise,
+                           mean = mean(Ratio),
+                           sem = sd(Ratio)/sqrt(length(Ratio)))
+ggplot(df, aes(x = Diff_T2_T3_category_English_avg, y= Ratio/100, color = session)) + 
+  #geom_smooth(method = "glm",method.args=list(family = "binomial")) +
+  binomial_smooth(aes(weight = OrigLen)) +
+  geom_point(data = accuracy_mean_pp4, aes(y=mean/100)) +
+  xlab("Difference in fluency performance for the English category fluency tasks (T3-T2)") +
   ylab("% correct Spanish productions") +
   scale_color_discrete(name = "Session", labels = c("T2", "T3")) +
   theme_bw()

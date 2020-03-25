@@ -1,0 +1,1008 @@
+---
+title: "Inidivual differences in foreign language attrition - a longitudinal online study"
+author: "Anne Mickan"
+date: "24 March 2020"
+output: 
+  html_document:
+    self_contained: no
+    theme: cosmo
+    highlight: espresso
+    toc: true
+    toc_float:
+      collapsed: true
+      smooth_scroll: false
+      toc_float: true
+    toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# load packages
+library(readxl)
+library(ggcorrplot)
+library(jtools)
+library(ggplot2)
+library(plyr)
+library(lme4)
+library(lmerTest)
+library(dplyr)
+library(effects)
+library(interactions)
+require(gdata)
+require(tidyr)
+library(knitr)
+
+# read data
+setwd("//cnas.ru.nl/wrkgrp/STD-OnlineStudy_DataCoding")
+T3 <- read_excel("T3_PicNaming_DataCoded_new.xlsx", guess_max = 1048576)
+T2 <- read_excel("T2_PicNaming_DataCoded.xlsx", guess_max = 1048576)
+T1 <- read_excel("T1_PicNaming_DataCoded.xlsx", guess_max = 1048576)
+
+ppn <- read.delim("PPN_final.txt", header = F) # pps for main analysis, for whom we have complete T2 and T3 data, and for whom we have fluency data (ignoring fluency nr. 5)
+ppn_all <- read.delim("PPN_final_all_sess.txt", header = F) # all pps for which we have complete Spanish T1, T2, and T3 data, regardless of fluency
+ppn_flucomp <- read.delim("PPN_final_fluency_sub.txt", header = F) # subset of ppn for which we have full T2 and T3 fluency data 
+
+
+# clean data #
+# subset to coded people 
+T3[T3=='NA'] <- NA
+T2[T2=='NA'] <- NA
+T1[T1=='NA'] <- NA
+T1[is.na(T1$error) == 0,]-> T1
+T3[is.na(T3$error) == 0,]-> T3
+T2[is.na(T2$error) == 0,]-> T2
+
+# exlcude people who have less than 144 trials 
+nums <- which(table(T2$ppn) < 144)
+nums <- names(nums)
+if (length(nums) > 0){
+  for (i in 1:length(nums)){
+    T2 <- T2[-which(T2$ppn == nums[i]),]}
+}
+nums <- which(table(T3$ppn) < 144)
+nums <- names(nums)
+if (length(nums) > 0){
+  T3 <- T3[-which(T3$ppn == nums),]
+}
+nums <- which(table(T1$ppn) < 144)
+nums <- names(nums)
+if (length(nums) > 0){
+  T1 <- T1[-which(T1$ppn == nums),]
+}
+
+T3$ppn <- as.factor(T3$ppn)
+T2$ppn <- as.factor(T2$ppn)
+T1$ppn <- as.factor(T1$ppn)
+
+# set numeric 
+T1$error <- as.numeric(T1$error)
+T1$phoncorr <- as.numeric(T1$phoncorr)
+T1$phonincorr <- as.numeric(T1$phonincorr)
+T2$error <- as.numeric(T2$error)
+T2$phoncorr <- as.numeric(T2$phoncorr)
+T2$phonincorr <- as.numeric(T2$phonincorr)
+T3$error <- as.numeric(T3$error)
+T3$phoncorr <- as.numeric(T3$phoncorr)
+T3$phonincorr <- as.numeric(T3$phonincorr)
+
+# calculate the ratio of correct for all partially correct trials
+for (i in 1:nrow(T3)){
+  if (is.na(T3$error[i]) == 0 && T3$error[i] == 999){
+    T3$error[i] <- T3$phonincorr[i]/(T3$phonincorr[i]+T3$phoncorr[i])
+  }
+}
+
+for (i in 1:nrow(T2)){
+  if (is.na(T2$error[i]) == 0 && T2$error[i] == 999){
+    T2$error[i] <- T2$phonincorr[i]/(T2$phonincorr[i]+T2$phoncorr[i])
+  }
+}
+
+for (i in 1:nrow(T1)){
+  if (is.na(T1$error[i]) == 0 && T1$error[i] == 999){
+    T1$error[i] <- T1$phonincorr[i]/(T1$phonincorr[i]+T1$phoncorr[i])
+  }
+}
+
+# based on items plots below, exclude ambiguous items 
+ambitems <- c("envelope.png", "pearl.png", "screen.png")
+for (i in 1:length(ambitems)){
+  T2 <- T2[-which(T2$imgFilename == ambitems[i]),]
+  T3 <- T3[-which(T3$imgFilename == ambitems[i]),]
+  T1 <- T1[-which(T1$imgFilename == ambitems[i]),]
+}
+
+# delete practice trials 
+T2 <- T2[T2$imgIndex > 3,] #excluding the first 4 items, trial index starts at 0
+T3 <- T3[T3$imgIndex > 3,]
+T1 <- T1[T1$imgIndex > 3,]
+
+# subset to people who are included in analysis 
+T2sub <- T2[T2$ppn %in% ppn$V1,]
+T2sub$ppn <- droplevels(T2sub$ppn)
+T3sub <- T3[T3$ppn %in% ppn$V1,]
+T3sub$ppn <- droplevels(T3sub$ppn)
+
+T2suball <- T2[T2$ppn %in% ppn_all$V1,]
+T2suball$ppn <- droplevels(T2suball$ppn)
+T3suball <- T3[T3$ppn %in% ppn_all$V1,]
+T3suball$ppn <- droplevels(T3suball$ppn)
+T1suball <- T1[T1$ppn %in% ppn_all$V1,]
+T1suball$ppn <- droplevels(T1suball$ppn)
+
+# exlcude people that typed on too many trials
+counts <- as.data.frame(table(T2sub$typing, T2sub$ppn))
+counts[,4] <- as.data.frame(table(T3sub$typing, T3sub$ppn))[3]
+counts2 <- as.data.frame(table(T1suball$typing, T1suball$ppn))
+counts2[,4] <- as.data.frame(table(T2suball$typing, T2suball$ppn))[3]
+counts2[,5] <- as.data.frame(table(T3suball$typing, T3suball$ppn))[3]
+
+pnex <- counts[which(counts$Freq > 30 | counts$Freq.1 > 30),]$Var2
+pnex2 <- counts2[which(counts2$Freq > 30 | counts2$Freq.1 > 30 | counts2$Freq.2 > 30),]$Var2
+
+for (i in 1:length(pnex)){
+  T2sub <- T2sub[-which(T2sub$ppn==pnex[i]),]
+  T3sub <- T3sub[-which(T3sub$ppn==pnex[i]),]
+}
+T2sub$ppn <- droplevels(T2sub$ppn)
+T3sub$ppn <- droplevels(T3sub$ppn)
+
+for (i in 1:length(pnex2)){
+  T1suball <- T1suball[-which(T1suball$ppn==pnex2[i]),]
+  T2suball <- T2suball[-which(T2suball$ppn==pnex2[i]),]
+  T3suball <- T3suball[-which(T3suball$ppn==pnex2[i]),]
+}
+T1suball$ppn <- droplevels(T1suball$ppn)
+T2suball$ppn <- droplevels(T2suball$ppn)
+T3suball$ppn <- droplevels(T3suball$ppn)
+
+# combined the datasets into one
+Mcombined <- rbind(T2sub, T3sub)
+Mcombined$session <- rep(c(2,3), each = nrow(T2sub)) 
+Mcombined$error <- Mcombined$error*100
+Mcombined$accuracy <- 100- Mcombined$error
+
+cols <- colnames(T2suball)[c(2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17)]
+T1suball = T1suball[cols]
+T2suball = T2suball[cols]
+T3suball = T3suball[cols]
+
+Mcombinedfull <- rbind(T1suball, T2suball, T3suball)
+Mcombinedfull$session <- rep(c(1,2,3), each = nrow(T3suball)) 
+Mcombinedfull$error <- Mcombinedfull$error*100
+Mcombinedfull$accuracy <- 100- Mcombinedfull$error
+
+# going for the dichotomous error coding
+Mcombined$errorbin <- Mcombined$error
+for (i in 1:nrow(Mcombined)){
+  if (Mcombined$error[i] != 0 & Mcombined$error[i] != 100){
+    Mcombined$errorbin[i] <- 100
+  }
+}
+
+Mcombinedfull$errorbin <- Mcombinedfull$error
+for (i in 1:nrow(Mcombinedfull)){
+  if (Mcombinedfull$error[i] != 0 & Mcombinedfull$error[i] != 100){
+    Mcombinedfull$errorbin[i] <- 100
+  }
+}
+
+# Adjusting phoneme correct and incorrect counts 
+# read in the file that contains the phoneme count 
+setwd("//ru.nl/wrkgrp/STD-OnlineStudy_DataCoding")
+lenwords <- read.delim("FullListWords_SpanishNaming.txt")
+
+# adjust existing phoneme correct and incorrect counts 
+Mcombined$OrigLen <- NA
+Mcombined$img <- gsub(".png", "", Mcombined$imgFilename)
+
+for (j in 1:nrow(Mcombined)) {
+  pos <- which(tolower(as.character(lenwords$English)) == tolower(as.character(Mcombined$img[j])))
+  Mcombined$OrigLen[j] <- lenwords$TotalPhon[pos]
+  
+  if (is.na(lenwords$AltPhon[pos])==1) {}
+  else if (is.na(lenwords$AltPhon[pos])==0 && is.na(Mcombined$response[j])==0) {
+    if (grepl("man", Mcombined$response[j]) && Mcombined$imgFilename[j] == "peanut.png") {
+      # cacahuete synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "mani"
+    } else if (grepl("pil", Mcombined$response[j]) && Mcombined$imgFilename[j] == "battery.png") {
+      # batteria synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "pila"
+    } else if (grepl("are", Mcombined$response[j]) && Mcombined$imgFilename[j] == "earring.png") {
+      # pendientes synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "aretes"
+    } else if (grepl("^aro", Mcombined$response[j]) && Mcombined$imgFilename[j] != "ring.png") {
+      # anillo synonym
+      Mcombined$OrigLen[j] <- lenwords$X[pos]
+      Mcombined$imgFilename[j] <- "aro"
+    } else if (grepl("co", Mcombined$response[j]) && Mcombined$imgFilename[j] == "pillow.png") {
+      # almohada synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "cojin"
+    } else if (grepl("ana", Mcombined$response[j]) && Mcombined$imgFilename[j] == "pineapple.png") {
+      # pinya synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "ananas"
+    } else if (grepl("cob", Mcombined$response[j]) && Mcombined$imgFilename[j] == "blanket.png") {
+      # manta synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "cobija"
+    } else if (grepl("cit", Mcombined$response[j]) && Mcombined$imgFilename[j] == "lemon.png") {
+      # limon synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "citron"
+    } else if (grepl("ori", Mcombined$response[j]) && Mcombined$imgFilename[j] == "sausage.png") {
+      # salchicha synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "chorizo"
+    } else if (grepl("bomb", Mcombined$response[j]) && Mcombined$imgFilename[j] == "straw.png") {
+      # paja synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "bombilla"
+    } else if (grepl("ca", Mcombined$response[j]) && Mcombined$imgFilename[j] == "candle.png") {
+      # vela synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "candela"
+    } else if (grepl("cer", Mcombined$response[j]) && Mcombined$imgFilename[j] == "chain.png") {
+      # cadena synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "cerradura"
+    } else if (grepl("stam", Mcombined$response[j]) && Mcombined$imgFilename[j] == "stamp.png") {
+      # sello synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "estampilla"
+    } else if (grepl("zap", Mcombined$response[j]) && Mcombined$imgFilename[j] == "pumpkin.png") {
+      # calabaza synonym
+      Mcombined$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombined$imgFilename[j] <- "zapallo"
+    }
+  } 
+  
+  rm(pos)
+}
+
+for (j in 1:nrow(Mcombined)) {
+  if (Mcombined$error[j]==0){
+    Mcombined$Corr[j] <- Mcombined$OrigLen[j]
+    Mcombined$Incorr[j] <- 0
+    Mcombined$phoncorr[j]  <- Mcombined$OrigLen[j]
+    Mcombined$phonincorr[j]  <- 0
+  } else if (Mcombined$error[j]==100){
+    Mcombined$Corr[j] <- 0
+    Mcombined$Incorr[j] <- Mcombined$OrigLen[j]
+    Mcombined$phoncorr[j]  <- 0
+    Mcombined$phonincorr[j]  <- Mcombined$OrigLen[j]
+  } 
+}
+
+Mcombined$Total <- Mcombined$phoncorr + Mcombined$phonincorr
+Mcombined$CorrPer <- Mcombined$phoncorr/Mcombined$Total
+Mcombined$Corr <- round(Mcombined$CorrPer*Mcombined$OrigLen,0)
+Mcombined$Incorr <- Mcombined$OrigLen-Mcombined$Corr
+Mcombined$Ratio <- (Mcombined$Corr/Mcombined$OrigLen)*100
+
+# adjust existing phoneme correct and incorrect counts 
+Mcombinedfull$OrigLen <- NA
+Mcombinedfull$img <- gsub(".png", "", Mcombinedfull$imgFilename)
+
+for (j in 1:nrow(Mcombinedfull)) {
+  pos <- which(tolower(as.character(lenwords$English)) == tolower(as.character(Mcombinedfull$img[j])))
+  Mcombinedfull$OrigLen[j] <- lenwords$TotalPhon[pos]
+  
+  if (is.na(lenwords$AltPhon[pos])==1) {}
+  else if (is.na(lenwords$AltPhon[pos])==0 && is.na(Mcombinedfull$response[j])==0) {
+    if (grepl("man", Mcombinedfull$response[j]) && Mcombinedfull$imgFilename[j] == "peanut.png") {
+      # cacahuete synonym
+      Mcombinedfull$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombinedfull$imgFilename[j] <- "mani"
+    } else if (grepl("pil", Mcombinedfull$response[j]) && Mcombinedfull$imgFilename[j] == "battery.png") {
+      # batteria synonym
+      Mcombinedfull$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombinedfull$imgFilename[j] <- "pila"
+    } else if (grepl("are", Mcombinedfull$response[j]) && Mcombinedfull$imgFilename[j] == "earring.png") {
+      # pendientes synonym
+      Mcombinedfull$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombinedfull$imgFilename[j] <- "aretes"
+    } else if (grepl("^aro", Mcombinedfull$response[j]) && Mcombinedfull$imgFilename[j] != "ring.png") {
+      # anillo synonym
+      Mcombinedfull$OrigLen[j] <- lenwords$X[pos]
+      Mcombinedfull$imgFilename[j] <- "aro"
+    } else if (grepl("co", Mcombinedfull$response[j]) && Mcombinedfull$imgFilename[j] == "pillow.png") {
+      # almohada synonym
+      Mcombinedfull$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombinedfull$imgFilename[j] <- "cojin"
+    } else if (grepl("ana", Mcombinedfull$response[j]) && Mcombinedfull$imgFilename[j] == "pineapple.png") {
+      # pinya synonym
+      Mcombinedfull$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombinedfull$imgFilename[j] <- "ananas"
+    } else if (grepl("cob", Mcombinedfull$response[j]) && Mcombinedfull$imgFilename[j] == "blanket.png") {
+      # manta synonym
+      Mcombinedfull$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombinedfull$imgFilename[j] <- "cobija"
+    } else if (grepl("cit", Mcombinedfull$response[j]) && Mcombinedfull$imgFilename[j] == "lemon.png") {
+      # limon synonym
+      Mcombinedfull$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombinedfull$imgFilename[j] <- "citron"
+    } else if (grepl("ori", Mcombinedfull$response[j]) && Mcombinedfull$imgFilename[j] == "sausage.png") {
+      # salchicha synonym
+      Mcombinedfull$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombinedfull$imgFilename[j] <- "chorizo"
+    } else if (grepl("bomb", Mcombinedfull$response[j]) && Mcombinedfull$imgFilename[j] == "straw.png") {
+      # paja synonym
+      Mcombinedfull$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombinedfull$imgFilename[j] <- "bombilla"
+    } else if (grepl("ca", Mcombinedfull$response[j]) && Mcombinedfull$imgFilename[j] == "candle.png") {
+      # vela synonym
+      Mcombinedfull$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombinedfull$imgFilename[j] <- "candela"
+    } else if (grepl("cer", Mcombinedfull$response[j]) && Mcombinedfull$imgFilename[j] == "chain.png") {
+      # cadena synonym
+      Mcombinedfull$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombinedfull$imgFilename[j] <- "cerradura"
+    } else if (grepl("stam", Mcombinedfull$response[j]) && Mcombinedfull$imgFilename[j] == "stamp.png") {
+      # sello synonym
+      Mcombinedfull$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombinedfull$imgFilename[j] <- "estampilla"
+    } else if (grepl("zap", Mcombinedfull$response[j]) && Mcombinedfull$imgFilename[j] == "pumpkin.png") {
+      # calabaza synonym
+      Mcombinedfull$OrigLen[j] <- lenwords$AltPhon[pos]
+      Mcombinedfull$imgFilename[j] <- "zapallo"
+    }
+  } 
+  
+  rm(pos)
+}
+
+for (j in 1:nrow(Mcombinedfull)) {
+  if (Mcombinedfull$error[j]==0){
+    Mcombinedfull$Corr[j] <- Mcombinedfull$OrigLen[j]
+    Mcombinedfull$Incorr[j] <- 0
+    Mcombinedfull$phoncorr[j]  <- Mcombinedfull$OrigLen[j]
+    Mcombinedfull$phonincorr[j]  <- 0
+  } else if (Mcombinedfull$error[j]==100){
+    Mcombinedfull$Corr[j] <- 0
+    Mcombinedfull$Incorr[j] <- Mcombinedfull$OrigLen[j]
+    Mcombinedfull$phoncorr[j]  <- 0
+    Mcombinedfull$phonincorr[j]  <- Mcombinedfull$OrigLen[j]
+  } 
+}
+
+Mcombinedfull$Total <- Mcombinedfull$phoncorr + Mcombinedfull$phonincorr
+Mcombinedfull$CorrPer <- Mcombinedfull$phoncorr/Mcombinedfull$Total
+Mcombinedfull$Corr <- round(Mcombinedfull$CorrPer*Mcombinedfull$OrigLen,0)
+Mcombinedfull$Incorr <- Mcombinedfull$OrigLen-Mcombinedfull$Corr
+Mcombinedfull$Ratio <- (Mcombinedfull$Corr/Mcombinedfull$OrigLen)*100
+
+```
+
+# Design 
+
+In this project, we followed a group of German native speakers that went abroad to Spain for a semester. They were tested at 3 time points:
+```{r, out.width = "600px", echo = FALSE}
+knitr::include_graphics("Design.png")
+```
+
+At each of those time points, participants completed (at least) 3 tasks:
+
+* a session-specific questionnaire
+    + Frequency of use ratings in Spanish, English and German (out of 100% total)
+    + Motivation to learn Spanish & attitude towards Spanish people
+    + Proficiency self-ratings in Spanish and English
+    + Session-specific questions
+  
+* a Spanish picture-based vocabulary test 
+    + 140 pictures of everyday objects and animals 
+    + max. 1 minute to name each (audio recordings)
+  
+* fluency tests in both English and German 
+    + 2 categories & 1 letter per language and session
+    + 1 minute per test
+    + Categories and letters differed for T1, T2, T3
+  
+* at T3 only, participants additionally complete the Doors test
+    + General “long-term” memory capacity
+    + Encoding phase: 30 pictures of doors presented each for 1 s
+    + Test phase: 4AFC, choose an already seen door out of display with 3 foils  
+
+Moreover, once every month participants filled in in-between frequency of use questionnaires for a more fine-grained and continuous measure of how often they read, spoke, listened to and wrote in each of the three languages.
+
+# Research question 
+
+We were mostly interested in how Spanish proficiency, as measured via a vocabulary test, changes from T2 to T3. Once people go back to their home country Germany, we expect their Spanish proficiency to decline; they should be attriting. However, we also expect there to be a lot of individual variation in the extent to which participants forget Spanish, and the goal of the present study is to found out what best predicts this variability.
+
+# Predictors 
+
+## Frequency of use
+
+Here is a plot that shows how much participants spent using each of the three languages throughout the entire time period of the experiment. The frequencies are the average over all four domains: reading, speaking, listening and writing. The grey area around the mean reflect the standard error around the mean, you see that it gets bigger towards the right end of the plot, which is because for those late time point fewer participants contribute to the mean because some had already finished T3 then. But overall, you see that during the study abroad, people actually did mostly use Spanish, which is very good and reassuring to see. They also still used a lot of German though. When returning to Germany, so between the T2 and T3 time points, you can see a clear change in usage patterns to almost exclusively German. There is also not a lot of variability as you can see by the rather narrow standard error. Both Spanish and English are rarely used in Germany, which the maximum Spanish use anyone reported at any time point between T2 and T3 being slightly below 50 %, but that is a clear and extreme outlier. The majority uses Spanish only about 10% of the time, if at all.
+
+
+```{r frequency of use , echo = FALSE, warning=FALSE, message=FALSE}
+setwd("U:/PhD/EXPERIMENT 4/DATA/InBetweenQuestionnaire")
+res <- read.csv("results-survey775398_5.csv", stringsAsFactors = F)
+
+# convert to date format and rename
+res$Date <- as.Date(res$Datum.Abgeschickt)
+
+# simplify tokens and rename the column
+res$Token <- res$ZugangsschlÃ.ssel
+for (i in 1: nrow(res)){
+    res$Token[i] <- gsub("(\\d.*)_\\d.*","\\1", tolower(as.character(res$Token[i])))
+}
+# rename column names 
+colnames(res) <- c("ID", "DateSent", "LastPage", "Lang", "Token_Time", "StartTime", "EndTime", "SpanishSpeaking", "EnglishSpeaking", "GermanSpeaking", "OtherSpeaking", "SpanishWriting", "EnglishWriting", "GermanWriting", "OtherWriting", "SpanishListening", "EnglishListening", "GermanListening", "OtherListening", "SpanishReading", "EnglishReading", "GermanReading", "OtherReading", "WhichOtherLang", "TotalTime", "GroupTime", "TimeFreq", "Comment", "Date", "Token")
+
+# NAs to 0 
+res[, 8:23][is.na(res[, 8:23])] <- 0
+
+# calculate Average per Language 
+res$Spanish <- NA
+for (i in 1:nrow(res)){
+  res$Spanish[i] <- mean(c(res$SpanishListening[i], res$SpanishReading[i], res$SpanishSpeaking[i], res$SpanishWriting[i]))}
+
+res$English <- NA
+for (i in 1:nrow(res)){
+  res$English[i] <- mean(c(res$EnglishListening[i], res$EnglishReading[i], res$EnglishSpeaking[i], res$EnglishWriting[i]))}
+
+res$German <- NA
+for (i in 1:nrow(res)){
+  res$German[i] <- mean(c(res$GermanListening[i], res$GermanReading[i], res$GermanSpeaking[i], res$GermanWriting[i]))}
+
+# create new dataframe with that information taken from the T1, T2, T3 and REGISTRATION forms
+# read in REGISTRATION FROM 
+reg <- read.delim("U:/PhD/EXPERIMENT 4/SCRIPTS/ErasmusSpain/ADMINISTRATION/REGISTRATION.txt", header = T, stringsAsFactors = F)
+# subset to good participants only
+reg[which(reg$token %in% ppn_all$V1),]->reg
+A <- unique(reg$token)
+
+k = 1
+keep <- NA
+for (i in 1:nrow(res)){
+  if (res$Token[i] %in% A){
+    keep[k] <- i
+    k <- k+1
+  } 
+}
+res <- res[keep,]
+
+# read in T1 
+setwd("U:/PhD/EXPERIMENT 4/DATA/T1")
+T1 <- read.csv("results-survey422243.csv", stringsAsFactors = F)
+for (i in 1:length(A)){
+  num <- which(T1$ZugangsschlÃ.ssel == A[i])
+  res[1+nrow(res),] <- NA
+  res$Token[nrow(res)] <- A[i]
+  res$Date[nrow(res)] <-  as.character(as.Date(T1$Datum.Abgeschickt[num]))
+  res$Spanish[nrow(res)] <- mean(c(T1$Gib.an..zu.wie.viel.Prozent.du.aktuellÂ..also.entweder.noch.in.Deutschland.oder.in.den.ersten.Wochen.im.Ausland..die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....SPRECHEN..z.B...mit.Freunden..Familie..an.der.Uni..im.Pub.Club..im.Restaurant..beim.Einkaufen.......Spanisch.[num], T1$Gib.an..zu.wie.viel.Prozent.du.aktuellÂ..also.entweder.noch.in.Deutschland.oder.in.den.ersten.Wochen.im.Ausland..die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....SCHREIBEN..z.B...E.Mails..Briefe..Formulare..PrÃ.fungen..im.Internet.......Spanisch.[num], T1$Gib.an..zu.wie.viel.Prozent.du.aktuellÂ..also.entweder.noch.in.Deutschland.oder.in.den.ersten.Wochen.im.Ausland..die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....HÃ.REN..z.B...an.der.Uni..im.Alltag..im.Radio..Fernsehen..mit.Freunden.und.oder.Familie.......Spanisch.[num], T1$Gib.an..zu.wie.viel.Prozent.du.aktuellÂ..also.entweder.noch.in.Deutschland.oder.in.den.ersten.Wochen.im.Ausland..die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....LESEN..z.B...im.Internet..BÃ.cher.in.der.Freizeit.und.an.der.Uni..E.Mails.......Spanisch.[num]))
+  res$English[nrow(res)] <- mean(c(T1$Gib.an..zu.wie.viel.Prozent.du.aktuellÂ..also.entweder.noch.in.Deutschland.oder.in.den.ersten.Wochen.im.Ausland..die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....SPRECHEN..z.B...mit.Freunden..Familie..an.der.Uni..im.Pub.Club..im.Restaurant..beim.Einkaufen.......Englisch.[num], T1$Gib.an..zu.wie.viel.Prozent.du.aktuellÂ..also.entweder.noch.in.Deutschland.oder.in.den.ersten.Wochen.im.Ausland..die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....SCHREIBEN..z.B...E.Mails..Briefe..Formulare..PrÃ.fungen..im.Internet.......Englisch.[num], T1$Gib.an..zu.wie.viel.Prozent.du.aktuellÂ..also.entweder.noch.in.Deutschland.oder.in.den.ersten.Wochen.im.Ausland..die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....HÃ.REN..z.B...an.der.Uni..im.Alltag..im.Radio..Fernsehen..mit.Freunden.und.oder.Familie.......Englisch.[num], T1$Gib.an..zu.wie.viel.Prozent.du.aktuellÂ..also.entweder.noch.in.Deutschland.oder.in.den.ersten.Wochen.im.Ausland..die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....LESEN..z.B...im.Internet..BÃ.cher.in.der.Freizeit.und.an.der.Uni..E.Mails.......Englisch.[num]))
+  res$German[nrow(res)] <- mean(c(T1$Gib.an..zu.wie.viel.Prozent.du.aktuellÂ..also.entweder.noch.in.Deutschland.oder.in.den.ersten.Wochen.im.Ausland..die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....SPRECHEN..z.B...mit.Freunden..Familie..an.der.Uni..im.Pub.Club..im.Restaurant..beim.Einkaufen.......Deutsch.[num], T1$Gib.an..zu.wie.viel.Prozent.du.aktuellÂ..also.entweder.noch.in.Deutschland.oder.in.den.ersten.Wochen.im.Ausland..die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....SCHREIBEN..z.B...E.Mails..Briefe..Formulare..PrÃ.fungen..im.Internet.......Deutsch.[num], T1$Gib.an..zu.wie.viel.Prozent.du.aktuellÂ..also.entweder.noch.in.Deutschland.oder.in.den.ersten.Wochen.im.Ausland..die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....HÃ.REN..z.B...an.der.Uni..im.Alltag..im.Radio..Fernsehen..mit.Freunden.und.oder.Familie.......Deutsch.[num], T1$Gib.an..zu.wie.viel.Prozent.du.aktuellÂ..also.entweder.noch.in.Deutschland.oder.in.den.ersten.Wochen.im.Ausland..die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....LESEN..z.B...im.Internet..BÃ.cher.in.der.Freizeit.und.an.der.Uni..E.Mails.......Deutsch.[num]))
+  res$Token_Time[nrow(res)] <- "T1"
+  }
+
+# read in T2
+setwd("U:/PhD/EXPERIMENT 4/DATA/T2")
+T2 <- read.csv("results-survey678123_full_3.csv", stringsAsFactors = F)
+for (i in 1:length(A)){
+  num <- which(T2$ZugangsschlÃ.ssel== A[i])
+  if (length(num)!= 0){
+    res[1+nrow(res),] <- NA
+    res$Token[nrow(res)] <- A[i]
+    res$Date[nrow(res)] <-  as.character(as.Date(T2$Datum.Abgeschickt[num]))
+    res$Spanish[nrow(res)] <- mean(c(T2$Sprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂ..also.in.den.letzten.Wochen.im.Ausland..bzw..seit.der.letzten.Erhebung.dieser.Frage..die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....SPRECHEN..z.B...mit.Freunden..Familie..an.der.Uni..im.Pub.Club..im.Restaurant..beim.Einkaufen.......Spanisch.[num], T2$Sprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂ..also.in.den.letzten.Wochen.im.Ausland..bzw..seit.der.letzten.Erhebung.dieser.Frage..die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....SCHREIBEN..z.B...E.Mails..Briefe..Formulare..PrÃ.fungen..im.Internet.......Spanisch.[num], T2$Sprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂ..also.in.den.letzten.Wochen.im.Ausland..bzw..seit.der.letzten.Erhebung.dieser.Frage..die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....HÃ.REN..z.B...an.der.Uni..im.Alltag..im.Radio..Fernsehen..mit.Freunden.und.oder.Familie.......Spanisch.[num], T2$Sprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂ..also.in.den.letzten.Wochen.im.Ausland..bzw..seit.der.letzten.Erhebung.dieser.Frage..die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....LESEN..z.B...im.Internet..BÃ.cher.in.der.Freizeit.und.an.der.Uni..E.Mails.......Spanisch.[num]))
+    res$English[nrow(res)] <- mean(c(T2$Sprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂ..also.in.den.letzten.Wochen.im.Ausland..bzw..seit.der.letzten.Erhebung.dieser.Frage..die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....SPRECHEN..z.B...mit.Freunden..Familie..an.der.Uni..im.Pub.Club..im.Restaurant..beim.Einkaufen.......Englisch.[num], T2$Sprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂ..also.in.den.letzten.Wochen.im.Ausland..bzw..seit.der.letzten.Erhebung.dieser.Frage..die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....SCHREIBEN..z.B...E.Mails..Briefe..Formulare..PrÃ.fungen..im.Internet.......Englisch.[num], T2$Sprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂ..also.in.den.letzten.Wochen.im.Ausland..bzw..seit.der.letzten.Erhebung.dieser.Frage..die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....HÃ.REN..z.B...an.der.Uni..im.Alltag..im.Radio..Fernsehen..mit.Freunden.und.oder.Familie.......Englisch.[num], T2$Sprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂ..also.in.den.letzten.Wochen.im.Ausland..bzw..seit.der.letzten.Erhebung.dieser.Frage..die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....LESEN..z.B...im.Internet..BÃ.cher.in.der.Freizeit.und.an.der.Uni..E.Mails.......Englisch.[num]))
+    res$German[nrow(res)] <- mean(c(T2$Sprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂ..also.in.den.letzten.Wochen.im.Ausland..bzw..seit.der.letzten.Erhebung.dieser.Frage..die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....SPRECHEN..z.B...mit.Freunden..Familie..an.der.Uni..im.Pub.Club..im.Restaurant..beim.Einkaufen.......Deutsch.[num], T2$Sprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂ..also.in.den.letzten.Wochen.im.Ausland..bzw..seit.der.letzten.Erhebung.dieser.Frage..die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....SCHREIBEN..z.B...E.Mails..Briefe..Formulare..PrÃ.fungen..im.Internet.......Deutsch.[num], T2$Sprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂ..also.in.den.letzten.Wochen.im.Ausland..bzw..seit.der.letzten.Erhebung.dieser.Frage..die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....HÃ.REN..z.B...an.der.Uni..im.Alltag..im.Radio..Fernsehen..mit.Freunden.und.oder.Familie.......Deutsch.[num], T2$Sprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂ..also.in.den.letzten.Wochen.im.Ausland..bzw..seit.der.letzten.Erhebung.dieser.Frage..die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....LESEN..z.B...im.Internet..BÃ.cher.in.der.Freizeit.und.an.der.Uni..E.Mails.......Deutsch.[num]))
+    res$Token_Time[nrow(res)] <- "T2"
+  } else {
+      #print(A[i])
+    }
+}
+
+setwd("U:/PhD/EXPERIMENT 4/DATA/T3")
+T3 <- read.csv("results-survey827149-2.csv", stringsAsFactors = F)
+T3 <- T3[which(T3$Letzte.Seite==6),]
+for (i in 1:length(A)){
+  num <- which(T3$ZugangsschlÃ.ssel== A[i])
+  if (length(num)!= 0){
+    res[1+nrow(res),] <- NA
+    res$Token[nrow(res)] <- A[i]
+    res$Date[nrow(res)] <-  as.character(as.Date(T3$Datum.Abgeschickt[num]))
+    res$Spanish[nrow(res)] <- mean(c(T3$Sprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂ.die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....SPRECHEN..z.B...mit.Freunden..Familie..an.der.Uni..im.Pub.Club..im.Restaurant..beim.Einkaufen.......Spanisch.[num], T3$Sprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂSprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂ.die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....SCHREIBEN..z.B...E.Mails..Briefe..Formulare..PrÃ.fungen..im.Internet.......Spanisch.[num], T3$Sprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂ.die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....HÃ.REN..z.B...an.der.Uni..im.Alltag..im.Radio..Fernsehen..mit.Freunden.und.oder.Familie.......Spanisch.[num], T3$Sprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂ.die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....LESEN..z.B...im.Internet..BÃ.cher.in.der.Freizeit.und.an.der.Uni..E.Mails.......Spanisch.[num]))
+    res$English[nrow(res)] <- mean(c(T3$T3$Sprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂ.die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....SPRECHEN..z.B...mit.Freunden..Familie..an.der.Uni..im.Pub.Club..im.Restaurant..beim.Einkaufen.......Englisch.[num], T3$Sprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂSprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂ.die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....SCHREIBEN..z.B...E.Mails..Briefe..Formulare..PrÃ.fungen..im.Internet.......Englisch.[num], T3$Sprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂ.die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....HÃ.REN..z.B...an.der.Uni..im.Alltag..im.Radio..Fernsehen..mit.Freunden.und.oder.Familie.......Englisch.[num], T3$Sprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂ.die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....LESEN..z.B...im.Internet..BÃ.cher.in.der.Freizeit.und.an.der.Uni..E.Mails.......Englisch.[num]))
+    res$German[nrow(res)] <- mean(c(T3$T3$Sprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂ.die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....SPRECHEN..z.B...mit.Freunden..Familie..an.der.Uni..im.Pub.Club..im.Restaurant..beim.Einkaufen.......Deutsch.[num], T3$Sprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂSprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂ.die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....SCHREIBEN..z.B...E.Mails..Briefe..Formulare..PrÃ.fungen..im.Internet.......Deutsch.[num], T3$Sprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂ.die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....HÃ.REN..z.B...an.der.Uni..im.Alltag..im.Radio..Fernsehen..mit.Freunden.und.oder.Familie.......Deutsch.[num], T3$Sprachgebrauch.in.Prozent...Gib.an..zu.wie.viel.Prozent.du.aktuellÂ.die.folgenden.Sprachen.in.den.angegebenen.Kontexten.verwendest..siehe.Beispielsituationen.in.Klammern.....Jede.Reihe.sollte.insgesamt.100..ergeben..siehe.Berechnung.unter.der.Frage.als.Hilfe....LESEN..z.B...im.Internet..BÃ.cher.in.der.Freizeit.und.an.der.Uni..E.Mails.......Deutsch.[num]))
+    res$Token_Time[nrow(res)] <- "T3"
+    #print(A[i])
+  } else {
+    res$Token[nrow(res)] <- NA
+    res$Date[nrow(res)] <-  NA
+    res$Spanish[nrow(res)] <- NA
+    res$English[nrow(res)] <- NA
+    res$German[nrow(res)] <- NA
+    res$Token_Time[nrow(res)] <- NA
+    #print(A[i])
+  }
+}
+
+
+```
+
+<p style="color:tomato">It's a bit unfortunate that the bulk of our participants uses little to no Spanish upon return to Germany, you'll see that also in the model predictor plots further below again. My main concern is here the outliers: for example, this person that used Spanish 50% of the time, is it fair and ok for the model statistically speaking to leave him/her in, or should we exclude outliers? We're facing a bit of a dilemma here, since we of course want to have as many participants as possible given the many predictors we're interested in, but of course the model will be affected by extreme outliers which is not ideal either.</p>
+
+<p style="color:tomato">As predictor in the models below I use the **average over all frequency of use scores that we have for each participant between T2 and (including) T3**. The average seems like the most reasonable measure here as it represents how much a person spent using a language on average in the period of time in which a change happened that we're interested in explaining. Alternatively, one could use only the T3 frequency of use measure, but that would mean ignoring all the hard fought for in-between measures.It makes sense when assuming that T3 performance is most directly influenced by recent language use. One could just as well argue though that attrition is something that unfolds over time and that is hence not *only* influenced by the last week of language use, and hence a measure that captures more than just that short time frame is better. We could also opt for using both, and testing a model with one against a model with the other and then use whichever is most predictive (by model comparison). What do you think?</p> 
+
+Apart from that, there is the issue of inter-dependency between the languages. We had agreed that I only enter Spanish frequency of use in the models below, together with the ratio of German over English use (as a way to express how much of the time not spent speaking Spanish is spent how). I guess this is discussed and decided upon.
+
+```{r freq plot, echo=FALSE, warning=FALSE, message=FALSE, fig.align = "center"}
+res$Month <- format(res$Date,format="%y-%m")
+
+aggregatedSpan <- ddply(res, .(Month), 
+                    plyr::summarise,
+                    mean = mean(Spanish),
+                    sem = sd(Spanish)/sqrt(length(Spanish)))
+
+aggregatedEng <- ddply(res, .(Month), 
+                        plyr::summarise,
+                        mean = mean(English),
+                        sem = sd(English)/sqrt(length(English)))
+
+aggregatedGer <- ddply(res, .(Month), 
+                        plyr::summarise,
+                        mean = mean(German),
+                        sem = sd(German)/sqrt(length(German)))
+
+combined <- rbind(aggregatedSpan, aggregatedEng, aggregatedGer)
+
+combined$Language <- rep(c("Spanish", "English", "German"), each = nrow(aggregatedEng))
+combined <- combined[-c(15,16,31,32,47,48),]
+combined$Language <- as.factor(combined$Language)
+
+plot <- ggplot(data = combined, aes(x = Month, y = mean, color = Language)) 
+plot +
+  geom_ribbon(aes(ymin=mean-sem, ymax=mean+sem, group = Language), fill = "lightgrey", colour = NA) + 
+  geom_line(aes(group = Language), size = 1) +
+  #geom_line(data = combined, aes(x = Month, y = mean, color = Language)) +
+  labs(x = "Time of the year", y = "Frequency of Use (0 - 100 %)") +
+  theme_bw()
+
+```
+
+## Fluency 
+
+Below I'm plotting fluency for the 96 participants that we have semi-complete fluency data for. 
+There are outliers in the data again. Via email we had concluded that we would not remove high outliers, because we don't have a good reason to remove those. We did discuss removing low outliers though, participants who only produced 1 or 2 words for a given category likely did not try very much. The question is where we put the cut-off, and whether we make that cut-off person and or category specific? It is possible for some people to only know 3 English words from the furniture category, but it's much less likely that someone would only know 3 words that start with M in German. 
+
+Regardless of outlier removal, we had decided that I would calculate the difference between T3-T2 fluency for each language and category seperately (but averaging over the two "categories" per language). The second plot below shows how these difference scores correlate with one another. 
+
+```{r fluency, echo = FALSE, warning=FALSE}
+setwd("//cnas.ru.nl/wrkgrp/STD-OnlineStudy_DataCoding")
+T1data <- read_excel("Fluency_all_coded.xlsx", guess_max = 1048576, sheet = "T1_fluency_all")
+T2data <- read_excel("Fluency_all_coded.xlsx", guess_max = 1048576, sheet = "T2_fluency_all")
+T3data <- read_excel("Fluency_all_coded.xlsx", guess_max = 1048576, sheet = "T3_fluency_all")
+data <- rbind(T2data, T3data)
+#data_all <- rbind(T1data, T2data, T3data)
+
+# subset data
+datasub <- data[which(data$PP %in% ppn$V1),]
+#datasuball <- data_all[which(data_all$PP %in% ppnT1$V1),]
+
+means <- ddply(datasub, .(PP, TN, Language, `Category/Letter`), 
+                        plyr::summarise,
+                        sum = sum(Word))
+meansagg <- ddply(means, .(TN, Language, `Category/Letter`),
+                  plyr::summarise,
+                  mean = mean(sum),
+                  sem = sd(sum)/sqrt(length(sum)))
+
+ggplot(means, aes(y = sum, x = `Category/Letter`, fill = Language)) +
+  geom_violin(aes(y = sum, fill = Language)) +
+  facet_wrap(~TN, scales = "free_x") +
+  ylab("# words produced") +
+  stat_summary(fun.y=mean, geom="point", size=2, color = "white") +
+  geom_jitter(shape=16, position=position_jitter(0.2))+
+  #geom_text(aes(label=PP)) +
+  #stat_summary(fun.data=mean_sdl, 
+  #             geom="pointrange", color="white") +
+  scale_fill_manual("Language", values = c("grey30", "grey80"), labels=c("German","English")) +
+  theme_bw()
+
+fluency <- read.delim("Fluency_scores_T2_T3.txt")
+colnames(fluency)[1] <- "ppn"
+corrmat <- fluency[,c(2,3,4,8,9,10,12,13)]
+corrdetail <- round(cor(corrmat, use = "complete.obs"), 1)
+ggcorrplot(corrdetail, method = "circle") +
+  theme(axis.text.x = element_text(size= 10),
+        axis.text.y = element_text(size= 10))
+
+```
+
+## Motivation 
+
+Participants completed the same motivation questionnaire at all time points. The questionnaire consists of 5 subparts. Below I'm plotting how scores on each of those subparts correlated with each other and across time points (only including T2 and T3).
+
+Based on this plot, I propose to group together 'interest in learning FL in general', 'motivation to learn Spanish in particular' and 'attitude towards the Spanish people & culture' into one score that I will call 'integrative motivation'. The other two subscores appear to correlated less well with the others and so I proposeto keep them seperate.  
+
+<p style="color:tomato"> Predictor for model: 
+So far, I calculated the average across T2 and T3 for each subscore and used those as predictors, rather than the difference between T2 and T3. This made most sense to me intuitively. But alternatively, we could only at T2 or only at T3 motivation, or at the difference between the two (how much did motivation change from T2 to T3). The latter makes little sense to me, and I thought an average of the two sessions would be most representative of participants' overall motivation during the time period under investgiation here. But let's discuss this. Overall, you can see that motivation scores at the two time points correlated positively, so someone who was motivated at T2, tended to stay motivated at T3.</p> 
+
+```{r motivation, echo=FALSE, warning=FALSE, message=FALSE, fig.align = "center"}
+setwd("//cnas.ru.nl/wrkgrp/STD-OnlineStudy_DataCoding")
+df <- read.delim("T1_T2_T3_lime_clean.txt", sep = "\t")
+
+## add predictors to the full dataframe 
+colnames(df)[1] <- "ppn"
+df$GermanEngRatio_T2_T3 <- df$T2_T3_English/df$T2_T3_German
+df$IntegMot_T2_T3_avg    <- ((df$Mot_T2_attitude + df$Mot_T2_integrative + df$Mot_T2_interest)/3 + (df$Mot_T3_attitude + df$Mot_T3_integrative+ df$Mot_T3_interest)/3)/2
+df$IntegMot_T2_T3_diff   <- ((df$Mot_T3_attitude + df$Mot_T3_integrative + df$Mot_T3_interest)/3 - (df$Mot_T2_attitude + df$Mot_T2_integrative+ df$Mot_T2_interest)/3)
+df$Mot_T2_T3_anxiety_avg <- (df$Mot_T3_anxiety+df$Mot_T2_anxiety)/2
+df$Mot_T2_T3_anxiety_diff <- (df$Mot_T3_anxiety-df$Mot_T2_anxiety)
+df$Mot_T2_T3_instr_avg   <- (df$Mot_T3_instrumental+df$Mot_T2_instrumental)/2
+df$Mot_T2_T3_instr_diff   <- (df$Mot_T3_instrumental-df$Mot_T2_instrumental)
+df$SRP_Spanish_T2_T3_diff     <- df$T3_SRP_Spanish_avg - df$T2_SRP_Spanish_avg
+df$SRP_Spanish_T2_T3_avg     <- (df$T3_SRP_Spanish_avg + df$T2_SRP_Spanish_avg)/2
+df$Immersion             <- (df$T3_LivingSitGermany_Spanish + df$T3_WatchSpanishMovies + df$T3_ReadSpanishBooks)/3
+
+# subset this dataframe to people who have been coded 
+# subset to people who are included in analysis
+df <- df[df$ppn %in% ppn_all$V1,]
+df$ppn <- as.factor(df$ppn)
+
+## subset to motivation questionnaire variables 
+corrmot <- df[,c(129:133, 135:139)]
+corrdetail <- round(cor(corrmot, use = "complete.obs"), 1)
+ggcorrplot(corrdetail, method = "circle") +
+  theme(axis.text.x = element_text(size= 10),
+        axis.text.y = element_text(size= 10))
+
+```
+
+## Spanish self-rated proficiency 
+
+For self-rated proficiency, we also see that T2 and T3 scores correlated highly positively with one another, even more so than the motivation scores. Here, however, I thought it made most sense to take the difference (T3-T2) as the predictor variable. I want to answer the question of whether participants' self-perceived change in proficiency matches their actually observed change in proficiency. In other words, how good or bad are people at judging their own attrition rates? Previous research usually shows that people overestimate how much they forget. In those studies, however, people get asked in retrospect how much they think they attrited, which is much more subjective than asking them at two time points how they currently judge their Spanish and then taking the difference between these two measures. It comes close though and so it's interesting to test for whether our participants also underestimate how much Spanish they still know. 
+
+As I mention in the next paragraph, we could use T2 self-rated proficiency as a proxy or ultimate L2 attainment and use this predictor seperately in the model to ask whether people who reached a high level of Spanish forget less or more than people who were never that good to begin with. But if we do that there is the issue that the T2 score will be highly correlated with the difference score that we are calculating here, so they cannot enter the same model together, right? 
+
+```{r prof, echo = FALSE}
+## subset to proficiency questionnaire variables 
+corrprof <- df[,c(61:64, 96:99)]
+corrdetail <- round(cor(corrprof, use = "complete.obs"), 1)
+ggcorrplot(corrdetail, method = "circle") +
+  theme(axis.text.x = element_text(size= 10),
+        axis.text.y = element_text(size= 10))
+```
+
+
+## Other predictors 
+
+### "Ultimate" Spanish attainment
+
+It has often been reported that people who reach a high level of L2 proficiency before attrition onset, attrite less than people who reached a lower level only. Using T2 performance as a predictor for the change in proficiency from T2 to T3 could be our way of asking this question for our dataset. It's questionable to what extent our T2 measure really reflects ultimate L2 attainment (it's vocab only and not validated), but at least it's objective (not dependent on introspection). Alternatively, we could use the T2 proficiency self-rating as a proxy for ultimate L2 attainment.
+
+Either way, we haven't yet agreed on how to include this predictor in the analyses. My suggestion was to simply add it to the mixed model with T2 and T3 data and session as a predictor, like we do for all other predictors, but there were concerns as to whether that's statistically possible. I think it is, and R doesn't seem to complain when running it either, but I might be missing something here. So let's discuss this once more. 
+
+```{r T2perf, echo = FALSE, warning = FALSE}
+
+T2perf <- as.data.frame(tapply(T2suball$error, T2suball$ppn, mean))
+T2perf$ppn <- rownames(T2perf)
+colnames(T2perf) <- c("score", "ppn")
+df <- merge(df, T2perf, by = "ppn")
+T2perf$score <- (1-T2perf$score)*100
+
+ggplot(T2perf, aes(score)) + 
+  geom_histogram(binwidth =5, color = "black", fill = "grey70") + 
+  xlab("T2 performance (in %)") +
+  geom_vline(aes(xintercept=mean(score)),
+            color="blue", linetype="dashed", size=1) + 
+  #xlim(c(0,30)) +
+  theme_bw()
+```
+
+### Spanish AoA
+
+I'm only plotting a histogram (with mean in blue) to illustrate the variability in this measure.  
+
+```{r AoA, echo = FALSE, warning = FALSE}
+
+AoA <- as.data.frame(tapply(df$SpanishAoA, df$ppn, mean))
+colnames(AoA) <- "Freq"
+ggplot(AoA, aes(Freq)) + 
+  geom_histogram(binwidth =1, color = "black", fill = "grey70") + 
+  xlab("Spanish AoA") +
+  geom_vline(aes(xintercept=mean(Freq)),
+            color="blue", linetype="dashed", size=1) + 
+  xlim(c(0,30)) +
+  theme_bw()
+```
+
+### Memory capacity
+
+Same goes for the Doors test, just a histogram for illustration. The mean is around 50% which is really low. It was a 4AFC task, so chance performance was at 25%, so I guess we can say that participants did perform above chance, but it apparently still was a pretty hard test.
+
+```{r Memory, echo = FALSE, warning = FALSE}
+
+Doors <- as.data.frame((tapply(df$DoorsScore, df$ppn, mean))*100)
+colnames(Doors) <- "Freq"
+ggplot(Doors, aes(Freq)) + 
+  geom_histogram(binwidth =5, color = "black", fill = "grey70") + 
+  xlab("Doors performance") +
+  geom_vline(aes(xintercept=mean(Freq, na.rm = T)),
+            color="blue", linetype="dashed", size=1) + 
+  #xlim(c(0,30)) +
+  theme_bw()
+```
+
+### Word frequency
+
+This is an item-level predictor, and thus a little different than the above predictors. I chose items from pretty much all frequency bands, see histogram. There is a gap in the low frequency range because I didn't want to have too many difficult words in the test, but I did include some extremely low frequency items for the exceptionally good participants so that they wouldn't reach ceiling.
+
+```{r Frequency, echo = FALSE}
+# add frequency in German to dataframe 
+setwd("//cnas.ru.nl/wrkgrp/STD-OnlineStudy_DataCoding")
+frequencies              <- read.delim("Germanfrequencies.txt")
+colnames(frequencies)    <- c("German", "German2", "img", "Spanish", "SubLog", "SubMln")
+freq2                    <- dplyr::select(frequencies, img, SubLog)
+
+ggplot(freq2, aes(SubLog)) + 
+  geom_histogram(binwidth =0.2, color = "black", fill = "grey70") + 
+  xlab("German lemma log frequencies (Celex)") +
+  geom_vline(aes(xintercept=mean(SubLog, na.rm = T)),
+            color="blue", linetype="dashed", size=1) + 
+  #xlim(c(0,30)) +
+  theme_bw()
+```
+
+### Cognate status
+
+Out of the 140 items that people get tested on:
+
+* 40 are cognates
+    + 20 are cognates between Spanish, German and English
+    + 20 are cognates between only Spanish and English
+* 100 are non-cognates (in German and Spanish)
+
+In the model I'm running, I'm only distinguishing between cognates and non-cognates, ignoring the two types of cognates there are, partially because we have so few of them in each category.
+
+## Correlations among all these preditors
+
+Finally, here is a correlation plot of all person-level predictors discussed above. I'm including all possible measures here, so for example for motivation I'm including not only the T2-T3 average that I propose to use, but also the difference score. 
+
+```{r all_pred, echo = FALSE}
+
+## subset to all variables for model
+corrmat <- df[,c(2, 120,121,122, 141:150)]
+#colnames(corrmat) <- c("Spanish_AoA", "T2_T3_Spanish_Frequency", "T2_T3_English_Frequency", "T2_T3_German_Frequency", "MemoryCapacity", "German_Eng_Ratio", "Mot_T2_T3_Integ", "SRP_Spanish_T2_T3", "Mot_T2_T3_anxiety", "Mot_T2_T3_instrumental")
+
+corrdetail <- round(cor(corrmat, use = "complete.obs"), 1)
+ggcorrplot(corrdetail, method = "circle") +
+ theme(axis.text.x = element_text(size= 10),
+       axis.text.y = element_text(size= 10))
+```
+
+## Open questions
+
+How much of the above needs to go in the paper? Do I need to motivate why I calculated differences for some and averages for others in the paper itself, or is that better to put in the supplements? 
+
+What to do about the T2 performance predictor? As you will see further below, we don't have enough power to estimate that many predictors anyway, and I think it's (next to Spanish AOA) one of the first predictors that can go. Also we are still not fully sure how to analyse it. Can I include this in the model just as any of the other predictors, or would I need to run a seperate model for this? Given that it's by far the most common and robust finding in the literature that ultimate L2 attainment prior to attrition onset is a major predictor for forgetting rates, I'm hesistant to ignore it, but I also think we need to compromise given our sample size. Our T2 measure is of course not really a measure of ultimate attainment, so it's questionable to what extend it can be used to get an answer to this question anyway, but it would be weird not to at least look at it. We could alternatively use the T2 self-rating as a measure of ultimate attainment (but this predictor would be highly correlated with the other self-ratings measure, so they couldn't go into one model, am I right?). 
+
+What to do about the motivation scores? See point above.
+
+As you will see further below, for the main analysis with only 96 participants, we don't have enough power to test all the above predictors. The model simply no longer converges with more than 8 predictors. What is our approach to that problem? Do we narrow the main analysis down to only a few of those? Which ones? Do we run subanalyses for some of them? 
+
+# Spanish knowledge over time
+
+## All timepoints
+ 
+People clearly learn while they are abroad, and forget after they move back to Germany.
+Importantly, T3 performance does not go back to T1 baseline: the study abroad has long-term benefits (T3 performance is statistically speaking higher than T1 performance). 
+In this analysis I included all people for whom we have Spanish data for all three timepoints, regardless of fluency, N= `r length(levels(Mcombinedfull$ppn))`.
+
+
+```{r error_rates_all, echo=FALSE, warning=FALSE, message=FALSE, fig.align = "center"}
+aggregatedfull <- ddply(Mcombinedfull, .(session, ppn), 
+                             plyr::summarise,
+                             mean = mean(accuracy, na.rm = T),
+                             sem = sd(accuracy, na.rm = T)/sqrt(length(accuracy)))
+
+aggregatedmean <- ddply(aggregatedfull, .(session), 
+                    plyr::summarise,
+                    condition_mean = mean(mean),
+                    condition_sem = sd(mean)/sqrt(length(mean)))
+
+combinedfull <- merge(aggregatedfull, aggregatedmean, by = c("session"))
+
+## plot absolute error rates per person and grand mean in red on top 
+lineplot <- ggplot(combinedfull, aes(y = mean, x = session, group = ppn))
+lineplot + geom_point(color = "darkgrey") +
+  geom_line(color = "darkgrey") +
+  geom_point(aes(y = condition_mean), color = "red") + 
+  geom_line(aes(y = condition_mean), color = "red", size = 1) + 
+  geom_errorbar(aes(ymin=condition_mean-condition_sem,
+                    ymax=condition_mean+condition_sem),
+                    width = 0.5, color = "red", size = 1) +
+  #geom_text(data = combinedfull[combinedfull$session==3,], aes(label=ppn), size = 3, nudge_x = c(0.2)) +
+  theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20)) + 
+  scale_x_continuous(name = "Session", breaks = c(1,2,3),labels=c("T1","T2", "T3"), expand = c(0.1,0.1)) +
+  ylab("% correct in Spanish vocabulary test") +
+  #scale_color_manual(guide=F, "Language Condition", values=c("dodgerblue4","firebrick"),labels=c("Dutch","English")) +
+  theme_bw()
+```
+
+## T2 and T3 only
+For this plot, I only included people for whom we have complete Spanish data as well as complete T2 and T3 fluency (ignoring fluency task #5 though) (N= `r length(levels(Mcombined$ppn))`). This is also the dataset that I will run all subsequent analyses on (unless otherwise indicated). 
+
+```{r T2_T3, echo=FALSE, warning=FALSE, message=FALSE, fig.align = "center", fig.width = 5, fig.length = 10}
+#### Plot forgetting rates ####
+aggregated <- ddply(Mcombined, .(session, ppn), 
+                             plyr::summarise,
+                             mean = mean(accuracy),
+                             sem = sd(accuracy)/sqrt(length(accuracy)))
+
+
+aggregatedmean <- ddply(aggregated, .(session), 
+                    plyr::summarise,
+                    condition_mean = mean(mean),
+                    condition_sem = sd(mean)/sqrt(length(mean)))
+
+combined <- merge(aggregated, aggregatedmean, by = c("session"))
+
+combined$diff <- rep((combined[combined$session == 3,]$mean - combined[combined$session == 2,]$mean), 2)
+
+for (i in 1:nrow(combined)){
+  if (combined$diff[i] > 0){
+    combined$sign[i] <- "pos"
+  } else {
+    combined$sign[i] <- "neg"
+  }
+}
+combined$sign <- as.factor(combined$sign)
+combined$session <- as.factor(combined$session)
+
+## plot absolute error rates per person and grand mean in red on top 
+lineplot <- ggplot(combined, aes(y = mean, x = session, group = ppn, fill = sign))
+lineplot + geom_point(aes(color = sign), show.legend = FALSE) +
+  geom_line(aes(color = sign), show.legend = FALSE) +
+  scale_color_manual(name = "direction", values = c("lightblue", "darkblue"), labels = c("People who forgot overall", "People who learned overall"))+
+  geom_point(aes(y = condition_mean), color = "red", show.legend = FALSE) + 
+  geom_line(aes(y = condition_mean), color = "red", size = 1, show.legend = FALSE) + 
+  geom_errorbar(aes(ymin=condition_mean-condition_sem,
+                    ymax=condition_mean+condition_sem),
+                    width = 0.3, color = "red", size = 1, show.legend = FALSE) +
+  #geom_text(aes(label=ppn), size = 3, nudge_x = c(0.1), show.legend = FALSE) +
+  theme(axis.text = element_text(size = 20), axis.title = element_text(size = 20)) + 
+  scale_x_discrete(name = "Session", breaks = c(2,3),labels=c("T2", "T3"), expand = c(0.1,0.1)) +
+  ylab("% correct in Spanish vocabulary test") +
+  theme_bw()
+
+```
+
+# Modelling
+
+In what follows, I ran mixed effect models on the Spanish (partial) accuracy scores from both T2 and T3 as DV and session as predictor.
+
+<center>Accuracy ~ Session + (1|PP) + (1|Item)</center>
+
+Model outcomes from such a model can be interpreted as follows:
+
+* <span style="color:red">Positive</span> estimate = learning from T2 to T3
+* <span style="color:blue">Negative</span> estimate = forgetting from T2 to T3
+* No effect = no change from T2 to T3 
+
+I then went on to assess each predictor separately in a model that includes the respective predictor in interaction with session. 
+
+<center>Accuracy ~ Session*Predictor +  (1|PP) + (1|Item)</center>
+
+If the model with the predictor significantly improved model fit compared to the baseline model, the predictor would be included in the final model, otherwise not.
+
+## Model Outcome
+
+```{r model, results ='asis', message = FALSE, warning = FALSE, echo = FALSE}
+dffull <- merge(Mcombined, df, by = "ppn")
+dffull2 <- merge(Mcombinedfull, df, by = "ppn")
+
+setwd("//cnas.ru.nl/wrkgrp/STD-OnlineStudy_DataCoding")
+
+# add cognate status to dataframe 
+lenwords                 <- read.delim("FullListWords_SpanishNaming.txt")
+lenwords$img             <- gsub(".png", "", lenwords$Picture)
+lenwords2                <- dplyr::select(lenwords, img, Cognate.)
+dffull                  <- left_join(dffull, lenwords2, by = "img")
+dffull$Cognate.[dffull$Cognate.==2] <- 1
+dffull$Cognate.              <- as.factor(dffull$Cognate.)
+#contrasts(dfcog$Cognate.) <- c(-0.5, 0.5)
+dffull$CogN                  <- (as.numeric(as.character(dffull$Cognate.))-0.5)  # cognates are 0.5, non-cognates are -0.5
+
+# add frequency in German to dataframe 
+frequencies              <- read.delim("Germanfrequencies.txt")
+colnames(frequencies)    <- c("German", "German2", "img", "Spanish", "SubLog", "SubMln")
+freq2                    <- dplyr::select(frequencies, img, SubLog)
+dffull                       <- merge(dffull, freq2, by = "img")
+
+dffull <- merge(dffull, fluency, by = "ppn")
+
+glmer(cbind(Corr, Incorr)  ~ 
+                     session*scale(T2_T3_Spanish) +
+                     session*scale(SRP_Spanish_T2_T3_diff) +
+                     #session*scale(IntegMot_T2_T3_avg) +
+                     #session*scale(Mot_T2_T3_anxiety_avg) +
+                     session*scale(Diff_T2_T3_category_English_avg_rel)+
+                     session*scale(Diff_T2_T3_letter_English_rel)+
+                     session*scale(Diff_T2_T3_letter_German_rel)+
+                     session*scale(Mot_T2_T3_instr_avg) +
+                     #session*scale(score) +
+                     session*scale(SubLog) +
+                     session*CogN +
+                     (1|ppn) + (1|imgFilename), 
+                     family = binomial, 
+                     control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), 
+                     #weights = OrigLen,
+                     data = dffull) %>%
+  tidy() %>%
+  kable(
+    col.names = c("Predictor", "B", "SE", "z", "p"),
+    digits = c(0, 2, 3, 2, 3))
+
+#summ(modelfull, model.info = FALSE, model.fit = FALSE, digits = 3, re.table = TRUE, groups.table = FALSE)
+
+#modefull %>%
+#  tidy() %>%
+#  kable(
+#    col.names = c("Predictor", "B", "SE", "z", "p"),
+#    digits = c(0, 2, 3, 2, 3)
+#  )
+
+```
+
+
+## Predictor plots
+
+Below I'm plotting each of the significant predictors in interaction with the session variable.
+
+```{r}
+# Spanish frequency of use
+e2 <- predictorEffect("T2_T3_Spanish", modelfull)
+plot(e2, lines=list(multiline=TRUE), confint=list(style="auto"), type='response')
+
+# Fluency German letter 
+e11 <- predictorEffect("Diff_T2_T3_letter_German_rel", modelfull)
+plot(e11, lines=list(multiline=TRUE), confint=list(style="auto"), type='response')
+
+# Fluency English letter 
+e12 <- predictorEffect("Diff_T2_T3_letter_English_rel", modelfull)
+plot(e12, lines=list(multiline=TRUE), confint=list(style="auto"), type='response')
+
+# Spanish proficiency self-rated
+e3 <- predictorEffect("SRP_Spanish_T2_T3", modelfull)
+plot(e3, lines=list(multiline=TRUE), confint=list(style="auto"), type='response')
+
+# Cognate status
+e5 <- predictorEffect("CogN", modelfull)
+plot(e5, lines=list(multiline=TRUE), confint=list(style="auto"), type='response')
+
+ddply(df, .(Cognate., session, ppn), 
+      summarise, N=length(Ratio), 
+      mean   = mean(Ratio, na.rm = TRUE), 
+      sem = sd(Ratio, na.rm = TRUE)/sqrt(N)) -> aggregatedCog
+
+aggregatedCog_mean <- ddply(aggregatedCog, .(Cognate., session), 
+                            summarise,
+                            condition_mean = mean(mean,na.rm = T),
+                            condition_sem = sd(mean,na.rm = T)/sqrt(length(mean[!is.na(mean)])))
+aggregatedCog_mean$Cognate.Lab <- factor(aggregatedCog_mean$Cognate., 
+                                         levels=0:1,
+                                         labels=c("Non-cognate","Cognate"))
+
+ggplot(aggregatedCog_mean, aes(x=session, y=condition_mean, group= Cognate.Lab)) +
+  geom_violin(position =position_dodge()) +
+  #geom_errorbar(aes(ymin=condition_mean-condition_sem,
+  #                  ymax=condition_mean+condition_sem),
+  #              width = 0.5, position=position_dodge(0.9)) +
+  facet_wrap(~Cognate.Lab) +
+  xlab("Session") +
+  scale_x_discrete(labels=c("T2", "T3"), breaks = 2:3) +
+  ylab("% correct") +
+  theme_bw()
+
+
+```

@@ -21,6 +21,9 @@ knitr::opts_chunk$set(echo = TRUE)
 # load packages
 library(readxl)
 library(ggcorrplot)
+library(sjPlot)
+library(sjmisc)
+library(sjlabelled)
 library(jtools)
 library(ggplot2)
 library(plyr)
@@ -412,7 +415,7 @@ Moreover, once every month participants filled in in-between frequency of use qu
 
 # Research question 
 
-We were mostly interested in how Spanish proficiency, as measured via a vocabulary test, changes from T2 to T3. Once people go back to their home country Germany, we expect their Spanish proficiency to decline; they should be attriting. However, we also expect there to be a lot of individual variation in the extent to which participants forget Spanish, and the goal of the present study is to found out what best predicts this variability.
+We were interested in how Spanish proficiency, as measured via a vocabulary test, changes from T2 to T3. Once people go back to their home country Germany, we expect their Spanish proficiency to decline; they should be attriting. However, we also expect there to be a lot of individual variation in the extent to which participants forget Spanish, and the goal of the present study is to found out what best predicts this variability.
 
 # Predictors 
 
@@ -572,11 +575,11 @@ plot +
 ## Fluency 
 
 Below I'm plotting fluency for the 96 participants that we have semi-complete fluency data for. 
-There are outliers in the data again. Via email we had concluded that we would not remove high outliers, because we don't have a good reason to remove those. We did discuss removing low outliers though, participants who only produced 1 or 2 words for a given category likely did not try very much. The question is where we put the cut-off, and whether we make that cut-off person and or category specific? It is possible for some people to only know 3 English words from the furniture category, but it's much less likely that someone would only know 3 words that start with M in German. 
+There are outliers in the data again. Via email we had concluded that we would not remove high outliers, because we don't have a good reason to remove those. We did discuss removing low outliers though, participants who only produced 1 or 2 words for a given category likely did not try very much. The question is where we put the cut-off, and whether we make that cut-off person and or category specific? It is possible for some people to only know 3 English words from the furniture category, but it's much less likely that someone would only know 3 words that start with B in German. 
 
-Regardless of outlier removal, we had decided that I would calculate the difference between T3-T2 fluency for each language and category seperately (but averaging over the two "categories" per language). The second plot below shows how these difference scores correlate with one another. 
+Regardless of outlier removal, we had decided that I would calculate the difference between T3-T2 fluency for each language and category seperately (but averaging over the two "categories" in English, and using only category 4 for German). <span style="color:red">Here we have a choice between using the absolute difference and using the relative difference (using T2 as baseline).</span> In the models below I used the relative difference. The second plot below shows how these difference scores correlate with one another. 
 
-```{r fluency, echo = FALSE, warning=FALSE}
+```{r fluency, echo = FALSE, warning=FALSE, out.width="120%"}
 setwd("//cnas.ru.nl/wrkgrp/STD-OnlineStudy_DataCoding")
 T1data <- read_excel("Fluency_all_coded.xlsx", guess_max = 1048576, sheet = "T1_fluency_all")
 T2data <- read_excel("Fluency_all_coded.xlsx", guess_max = 1048576, sheet = "T2_fluency_all")
@@ -595,6 +598,7 @@ meansagg <- ddply(means, .(TN, Language, `Category/Letter`),
                   plyr::summarise,
                   mean = mean(sum),
                   sem = sd(sum)/sqrt(length(sum)))
+means$`Category/Letter` <- revalue(means$`Category/Letter`, c("A"="A", "B"="B", "Badartikel"="Bathsup", "Body parts" = "Bodpar", "Büroartikel" = "Offsup", "D" = "D", "electronic devices" = "Elecdev", "Fortbewegungsmittel" = "Vehicles", "Kleidung" = "Clothes", "M" = "M", "Sport" = "Sport", "Obst" = "Fruit"))
 
 ggplot(means, aes(y = sum, x = `Category/Letter`, fill = Language)) +
   geom_violin(aes(y = sum, fill = Language)) +
@@ -610,7 +614,7 @@ ggplot(means, aes(y = sum, x = `Category/Letter`, fill = Language)) +
 
 fluency <- read.delim("Fluency_scores_T2_T3.txt")
 colnames(fluency)[1] <- "ppn"
-corrmat <- fluency[,c(2,3,4,8,9,10,12,13)]
+corrmat <- fluency[,c(2,3,5,8,9,10,12,13)]
 corrdetail <- round(cor(corrmat, use = "complete.obs"), 1)
 ggcorrplot(corrdetail, method = "circle") +
   theme(axis.text.x = element_text(size= 10),
@@ -620,12 +624,13 @@ ggcorrplot(corrdetail, method = "circle") +
 
 ## Motivation 
 
-Participants completed the same motivation questionnaire at all time points. The questionnaire consists of 5 subparts. Below I'm plotting how scores on each of those subparts correlated with each other and across time points (only including T2 and T3).
+Participants completed the same motivation questionnaire at all time points. The questionnaire consists of 5 subparts. Below I'm plotting how scores on each of those subparts correlate with each other and across time points (only including T2 and T3).
 
-Based on this plot, I propose to group together 'interest in learning FL in general', 'motivation to learn Spanish in particular' and 'attitude towards the Spanish people & culture' into one score that I will call 'integrative motivation'. The other two subscores appear to correlated less well with the others and so I proposeto keep them seperate.  
+Based on this plot, I propose to group together 'interest in learning FL in general', 'motivation to learn Spanish in particular' (aka integrative motivation) and 'attitude towards the Spanish people & culture' into one score that I will call 'integrative motivation'. The other two subscores appear to correlated less well with the others and so I propose to keep them seperate.  
 
-<p style="color:tomato"> Predictor for model: 
-So far, I calculated the average across T2 and T3 for each subscore and used those as predictors, rather than the difference between T2 and T3. This made most sense to me intuitively. But alternatively, we could only at T2 or only at T3 motivation, or at the difference between the two (how much did motivation change from T2 to T3). The latter makes little sense to me, and I thought an average of the two sessions would be most representative of participants' overall motivation during the time period under investgiation here. But let's discuss this. Overall, you can see that motivation scores at the two time points correlated positively, so someone who was motivated at T2, tended to stay motivated at T3.</p> 
+<p style="color:tomato"> Predictor for model: average across T2 and T2</p>
+
+So far, I calculated the average across T2 and T3 for each subscore and used those as predictors. This made most sense to me intuitively, but alternatively, we could look only at T2 or only at T3 motivation, or at the difference between the two (how much did motivation change from T2 to T3). Since we are interested in how motivation to learn and maintain Spanish affects Spanish proficiency over time, I think we need the average score and not the difference. The difference would equate people who are very motivated and stay motivated with people who are not very motivated and stay unmotivated, so it doesn’t distinguish the people that we want to be distinguished from another. There is still an argument to be made for using only T2 or T3 scores, I guess, but I feel like the average is most representative after all. 
 
 ```{r motivation, echo=FALSE, warning=FALSE, message=FALSE, fig.align = "center"}
 setwd("//cnas.ru.nl/wrkgrp/STD-OnlineStudy_DataCoding")
@@ -660,9 +665,9 @@ ggcorrplot(corrdetail, method = "circle") +
 
 ## Spanish self-rated proficiency 
 
-For self-rated proficiency, we also see that T2 and T3 scores correlated highly positively with one another, even more so than the motivation scores. Here, however, I thought it made most sense to take the difference (T3-T2) as the predictor variable. I want to answer the question of whether participants' self-perceived change in proficiency matches their actually observed change in proficiency. In other words, how good or bad are people at judging their own attrition rates? Previous research usually shows that people overestimate how much they forget. In those studies, however, people get asked in retrospect how much they think they attrited, which is much more subjective than asking them at two time points how they currently judge their Spanish and then taking the difference between these two measures. It comes close though and so it's interesting to test for whether our participants also underestimate how much Spanish they still know. 
+For self-rated proficiency, I thought it made most sense to take the difference (T3-T2) as the predictor variable. I want to answer the question of whether participants' self-perceived change in proficiency matches their actually observed change in proficiency. In other words, how good or bad are people at judging their own attrition rates? Previous research usually shows that people overestimate how much they forget. In those studies, however, people get asked in retrospect how much they think they attrited, which is much more subjective than asking them at two time points how they currently judge their Spanish and then taking the difference between these two measures. It comes close though and so it's interesting to test for whether our participants also underestimate how much Spanish they still know. 
 
-As I mention in the next paragraph, we could use T2 self-rated proficiency as a proxy or ultimate L2 attainment and use this predictor seperately in the model to ask whether people who reached a high level of Spanish forget less or more than people who were never that good to begin with. But if we do that there is the issue that the T2 score will be highly correlated with the difference score that we are calculating here, so they cannot enter the same model together, right? 
+As I mention in the next paragraph, we could use T2 self-rated proficiency as a proxy or ultimate L2 attainment and use this predictor seperately in the model to ask whether people who reached a high level of Spanish forget less or more than people who were never that good to begin with. But if we do that there is the issue that the T2 score will be highly correlated with the difference score that we are calculating here, so they cannot enter the same model together. I'm guessing that makes this option inviable. 
 
 ```{r prof, echo = FALSE}
 ## subset to proficiency questionnaire variables 
@@ -680,7 +685,7 @@ ggcorrplot(corrdetail, method = "circle") +
 
 It has often been reported that people who reach a high level of L2 proficiency before attrition onset, attrite less than people who reached a lower level only. Using T2 performance as a predictor for the change in proficiency from T2 to T3 could be our way of asking this question for our dataset. It's questionable to what extent our T2 measure really reflects ultimate L2 attainment (it's vocab only and not validated), but at least it's objective (not dependent on introspection). Alternatively, we could use the T2 proficiency self-rating as a proxy for ultimate L2 attainment.
 
-Either way, we haven't yet agreed on how to include this predictor in the analyses. My suggestion was to simply add it to the mixed model with T2 and T3 data and session as a predictor, like we do for all other predictors, but there were concerns as to whether that's statistically possible. I think it is, and R doesn't seem to complain when running it either, but I might be missing something here. So let's discuss this once more. 
+<span style="color:red">Either way, we haven't yet agreed on how to include this predictor in the analyses. My suggestion was to simply add it to the mixed model with T2 and T3 data and session as a predictor, like we do for all other predictors, but there were concerns as to whether that's statistically possible. I think it is, and R doesn't seem to complain when running it either, but I might be missing something here. So let's discuss this once more. </span>
 
 ```{r T2perf, echo = FALSE, warning = FALSE}
 
@@ -768,10 +773,13 @@ In the model I'm running, I'm only distinguishing between cognates and non-cogna
 
 Finally, here is a correlation plot of all person-level predictors discussed above. I'm including all possible measures here, so for example for motivation I'm including not only the T2-T3 average that I propose to use, but also the difference score. 
 
-```{r all_pred, echo = FALSE}
+```{r all_pred, echo = FALSE, out.width="100%"}
 
 ## subset to all variables for model
-corrmat <- df[,c(2, 120,121,122, 141:150)]
+colnames(fluency)[1] <- "ppn"
+df <- merge(df, fluency[,c(1,2,3,5,8,9,10,12,13)], by = "ppn")
+
+corrmat <- df[,c(2, 120,121,122, 141:160)]
 #colnames(corrmat) <- c("Spanish_AoA", "T2_T3_Spanish_Frequency", "T2_T3_English_Frequency", "T2_T3_German_Frequency", "MemoryCapacity", "German_Eng_Ratio", "Mot_T2_T3_Integ", "SRP_Spanish_T2_T3", "Mot_T2_T3_anxiety", "Mot_T2_T3_instrumental")
 
 corrdetail <- round(cor(corrmat, use = "complete.obs"), 1)
@@ -780,19 +788,12 @@ ggcorrplot(corrdetail, method = "circle") +
        axis.text.y = element_text(size= 10))
 ```
 
-## Open questions
 
-How much of the above needs to go in the paper? Do I need to motivate why I calculated differences for some and averages for others in the paper itself, or is that better to put in the supplements? 
+# Results
 
-What to do about the T2 performance predictor? As you will see further below, we don't have enough power to estimate that many predictors anyway, and I think it's (next to Spanish AOA) one of the first predictors that can go. Also we are still not fully sure how to analyse it. Can I include this in the model just as any of the other predictors, or would I need to run a seperate model for this? Given that it's by far the most common and robust finding in the literature that ultimate L2 attainment prior to attrition onset is a major predictor for forgetting rates, I'm hesistant to ignore it, but I also think we need to compromise given our sample size. Our T2 measure is of course not really a measure of ultimate attainment, so it's questionable to what extend it can be used to get an answer to this question anyway, but it would be weird not to at least look at it. We could alternatively use the T2 self-rating as a measure of ultimate attainment (but this predictor would be highly correlated with the other self-ratings measure, so they couldn't go into one model, am I right?). 
+## Descriptive Plots
 
-What to do about the motivation scores? See point above.
-
-As you will see further below, for the main analysis with only 96 participants, we don't have enough power to test all the above predictors. The model simply no longer converges with more than 8 predictors. What is our approach to that problem? Do we narrow the main analysis down to only a few of those? Which ones? Do we run subanalyses for some of them? 
-
-# Spanish knowledge over time
-
-## All timepoints
+### All timepoints
  
 People clearly learn while they are abroad, and forget after they move back to Germany.
 Importantly, T3 performance does not go back to T1 baseline: the study abroad has long-term benefits (T3 performance is statistically speaking higher than T1 performance). 
@@ -829,7 +830,7 @@ lineplot + geom_point(color = "darkgrey") +
   theme_bw()
 ```
 
-## T2 and T3 only
+### T2 and T3 only
 For this plot, I only included people for whom we have complete Spanish data as well as complete T2 and T3 fluency (ignoring fluency task #5 though) (N= `r length(levels(Mcombined$ppn))`). This is also the dataset that I will run all subsequent analyses on (unless otherwise indicated). 
 
 ```{r T2_T3, echo=FALSE, warning=FALSE, message=FALSE, fig.align = "center", fig.width = 5, fig.length = 10}
@@ -877,13 +878,13 @@ lineplot + geom_point(aes(color = sign), show.legend = FALSE) +
 
 ```
 
-# Modelling
+## Modelling
 
-In what follows, I ran mixed effect models on the Spanish (partial) accuracy scores from both T2 and T3 as DV and session as predictor.
+I ran mixed effect models on the Spanish (partial) accuracy scores from both T2 and T3 as DV and session as predictor.
 
 <center>Accuracy ~ Session + (1|PP) + (1|Item)</center>
 
-Model outcomes from such a model can be interpreted as follows:
+Model outcomes from such a model can be (hopefully) interpreted as follows:
 
 * <span style="color:red">Positive</span> estimate = learning from T2 to T3
 * <span style="color:blue">Negative</span> estimate = forgetting from T2 to T3
@@ -895,9 +896,9 @@ I then went on to assess each predictor separately in a model that includes the 
 
 If the model with the predictor significantly improved model fit compared to the baseline model, the predictor would be included in the final model, otherwise not.
 
-## Model Outcome
+### Model outcome
 
-```{r model, results ='asis', message = FALSE, warning = FALSE, echo = FALSE}
+```{r model, results ='asis', message = FALSE, echo = FALSE}
 dffull <- merge(Mcombined, df, by = "ppn")
 dffull2 <- merge(Mcombinedfull, df, by = "ppn")
 
@@ -919,9 +920,12 @@ colnames(frequencies)    <- c("German", "German2", "img", "Spanish", "SubLog", "
 freq2                    <- dplyr::select(frequencies, img, SubLog)
 dffull                       <- merge(dffull, freq2, by = "img")
 
-dffull <- merge(dffull, fluency, by = "ppn")
 
-glmer(cbind(Corr, Incorr)  ~ 
+# setting contrasts
+dffull$session <- as.factor(dffull$session)
+contrasts(dffull$session) <- c(-0.5, 0.5)
+
+modelfull <- glmer(cbind(Corr, Incorr)  ~ 
                      session*scale(T2_T3_Spanish) +
                      session*scale(SRP_Spanish_T2_T3_diff) +
                      #session*scale(IntegMot_T2_T3_avg) +
@@ -930,36 +934,26 @@ glmer(cbind(Corr, Incorr)  ~
                      session*scale(Diff_T2_T3_letter_English_rel)+
                      session*scale(Diff_T2_T3_letter_German_rel)+
                      session*scale(Mot_T2_T3_instr_avg) +
-                     #session*scale(score) +
+                     session*scale(score) +
                      session*scale(SubLog) +
                      session*CogN +
                      (1|ppn) + (1|imgFilename), 
                      family = binomial, 
                      control=glmerControl(optimizer="bobyqa", optCtrl = list(maxfun = 100000)), 
                      #weights = OrigLen,
-                     data = dffull) %>%
-  tidy() %>%
-  kable(
-    col.names = c("Predictor", "B", "SE", "z", "p"),
-    digits = c(0, 2, 3, 2, 3))
+                     data = dffull) 
 
 #summ(modelfull, model.info = FALSE, model.fit = FALSE, digits = 3, re.table = TRUE, groups.table = FALSE)
-
-#modefull %>%
-#  tidy() %>%
-#  kable(
-#    col.names = c("Predictor", "B", "SE", "z", "p"),
-#    digits = c(0, 2, 3, 2, 3)
-#  )
+tab_model(modelfull, auto.label = FALSE, show.ci = FALSE, transform = NULL, show.re.var = FALSE)
 
 ```
 
 
-## Predictor plots
+### Predictor plots
 
 Below I'm plotting each of the significant predictors in interaction with the session variable.
 
-```{r}
+```{r, echo = FALSE}
 # Spanish frequency of use
 e2 <- predictorEffect("T2_T3_Spanish", modelfull)
 plot(e2, lines=list(multiline=TRUE), confint=list(style="auto"), type='response')
@@ -973,36 +967,15 @@ e12 <- predictorEffect("Diff_T2_T3_letter_English_rel", modelfull)
 plot(e12, lines=list(multiline=TRUE), confint=list(style="auto"), type='response')
 
 # Spanish proficiency self-rated
-e3 <- predictorEffect("SRP_Spanish_T2_T3", modelfull)
+e3 <- predictorEffect("SRP_Spanish_T2_T3_diff", modelfull)
 plot(e3, lines=list(multiline=TRUE), confint=list(style="auto"), type='response')
 
 # Cognate status
 e5 <- predictorEffect("CogN", modelfull)
 plot(e5, lines=list(multiline=TRUE), confint=list(style="auto"), type='response')
 
-ddply(df, .(Cognate., session, ppn), 
-      summarise, N=length(Ratio), 
-      mean   = mean(Ratio, na.rm = TRUE), 
-      sem = sd(Ratio, na.rm = TRUE)/sqrt(N)) -> aggregatedCog
-
-aggregatedCog_mean <- ddply(aggregatedCog, .(Cognate., session), 
-                            summarise,
-                            condition_mean = mean(mean,na.rm = T),
-                            condition_sem = sd(mean,na.rm = T)/sqrt(length(mean[!is.na(mean)])))
-aggregatedCog_mean$Cognate.Lab <- factor(aggregatedCog_mean$Cognate., 
-                                         levels=0:1,
-                                         labels=c("Non-cognate","Cognate"))
-
-ggplot(aggregatedCog_mean, aes(x=session, y=condition_mean, group= Cognate.Lab)) +
-  geom_violin(position =position_dodge()) +
-  #geom_errorbar(aes(ymin=condition_mean-condition_sem,
-  #                  ymax=condition_mean+condition_sem),
-  #              width = 0.5, position=position_dodge(0.9)) +
-  facet_wrap(~Cognate.Lab) +
-  xlab("Session") +
-  scale_x_discrete(labels=c("T2", "T3"), breaks = 2:3) +
-  ylab("% correct") +
-  theme_bw()
-
+# T2 performance
+e6 <- predictorEffect("score", modelfull)
+plot(e6, lines=list(multiline=TRUE), confint=list(style="auto"), type='response')
 
 ```
